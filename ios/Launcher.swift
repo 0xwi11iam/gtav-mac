@@ -15,6 +15,7 @@ final class Settings: ObservableObject {
     @Published var textures = 0
     @Published var touch = 1.0
     @Published var mute = false
+    @Published var showFps = false
     @Published var multiplayer = false
     @Published var host = false
     @Published var server = ""
@@ -31,6 +32,7 @@ final class Settings: ObservableObject {
         if let v = json["texture_quality"] as? Int, (0...2).contains(v) { textures = v }
         if let v = json["touch_sensitivity"] as? Double { touch = v }
         if let v = json["mute"] as? Bool { mute = v }
+        if let v = json["show_fps"] as? Bool { showFps = v }
         if let v = json["multiplayer"] as? Bool { multiplayer = v }
         if let v = json["host"] as? Bool { host = v }
         if let v = json["server"] as? String { server = v }
@@ -45,6 +47,7 @@ final class Settings: ObservableObject {
         json["texture_quality"] = textures
         json["touch_sensitivity"] = (touch * 100).rounded() / 100
         json["mute"] = mute
+        json["show_fps"] = showFps
         json["multiplayer"] = multiplayer
         json["host"] = host
         json["server"] = server.trimmingCharacters(in: .whitespaces)
@@ -150,6 +153,7 @@ struct LauncherView: View {
                     Text(String(format: "%.2f×", s.touch)).monospacedDigit().frame(width: 50, alignment: .trailing)
                 }
                 Toggle("Mute audio", isOn: $s.mute)
+                Toggle("Show frame rate", isOn: $s.showFps)
                 Section("Multiplayer") {
                     Toggle("Play with friends", isOn: $s.multiplayer)
                     if s.multiplayer {

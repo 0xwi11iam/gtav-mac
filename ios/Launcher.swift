@@ -242,8 +242,24 @@ func localIPs() -> [String] {
     return out.isEmpty ? ["?"] : out
 }
 
+final class RefreshRate: NSObject {
+    static let shared = RefreshRate()
+    private var link: CADisplayLink?
+
+    @objc private func tick() {}
+
+    func hold() {
+        guard link == nil else { return }
+        let l = CADisplayLink(target: self, selector: #selector(tick))
+        l.preferredFrameRateRange = CAFrameRateRange(minimum: 120, maximum: 120, preferred: 120)
+        l.add(to: .main, forMode: .common)
+        link = l
+    }
+}
+
 @_cdecl("muguet_show_launcher")
 public func muguetShowLauncher(_ viewController: UnsafeMutableRawPointer, _ done: @convention(c) () -> Void) {
+    RefreshRate.shared.hold()
     let parent = Unmanaged<UIViewController>.fromOpaque(viewController).takeUnretainedValue()
     weak var sheet: UIViewController?
     let host = UIHostingController(rootView: LauncherView(play: {

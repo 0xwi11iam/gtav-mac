@@ -64,5 +64,6 @@ One player hosts from the launcher (or runs `muguet-server` on any machine), the
 - [inj-src](https://github.com/inj-src) for decoding bc textures on all cores
 - [Dbhardwaj99](https://github.com/Dbhardwaj99) for reporting real free disk space
 - [dre4moff](https://github.com/dre4moff) for releasing controller input when the app loses focus
+- [divyanshugarg36](https://github.com/divyanshugarg36) for keyboard support on iOS, the memory limit on free accounts and the frame rate label
 
 Contributions are welcome !

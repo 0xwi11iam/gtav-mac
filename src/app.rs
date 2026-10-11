@@ -163,6 +163,8 @@ impl ApplicationHandler for App {
         #[cfg(target_os = "ios")]
         if crate::touch::refresh() { wait = 15; }
         #[cfg(target_os = "ios")]
+        if crate::keyboard::poll() { wait = wait.min(8); }
+        #[cfg(target_os = "ios")]
         if !self.started {
             self.launcher();
             wait = 50;

@@ -24,7 +24,10 @@ const HOOKS: &[(&str, &str, &[Arg])] = &[
     ("muguet_text", "CTextFile::GetInternal(unsigned int)", &[Arg::MissingText]),
 ];
 
-pub const VERSION: u32 = 4;
+// the game walks its 6 blocking entities up to a null and runs off the array when all 6 are set, so it only gets to fill 5
+const SCENARIO_CHECK: &str = "CScenarioManager::PerformCollisionChecksForScenarioPoint(CScenarioManager::CollisionCheckParams const&)";
+
+pub const VERSION: u32 = 5;
 
 fn returns(args: &[Arg]) -> bool {
     args.contains(&Arg::Local1Replaced) || args.contains(&Arg::MissingText)
@@ -36,6 +39,7 @@ struct Patcher {
     tls_global: u32,
 
     targets: HashMap<u32, usize>,
+    scenario_check: Option<u32>,
     exports: Vec<(String, u32)>,
     next_func: u32,
 }
@@ -81,6 +85,17 @@ impl Reencode for Patcher {
     fn parse_function_body(&mut self, code: &mut wasm_encoder::CodeSection, func: wasmparser::FunctionBody<'_>) -> Result<(), Error<Self::Error>> {
         let index = self.next_func;
         self.next_func += 1;
+        if Some(index) == self.scenario_check {
+            use wasm_encoder::Instruction as I;
+            let mut f = self.new_function_with_parsed_locals(&func)?;
+            let mut reader = func.get_operators_reader()?;
+            while !reader.eof() {
+                let i = self.parse_instruction(&mut reader)?;
+                f.instruction(if matches!(i, I::I32Const(6)) { &I::I32Const(5) } else { &i });
+            }
+            code.function(&f);
+            return Ok(());
+        }
         let Some(&hook) = self.targets.get(&index) else {
             return utils::parse_function_body(self, code, func);
         };
@@ -186,6 +201,7 @@ pub fn patch(wasm: &[u8], wanted: &[(&str, &str)]) -> Result<Vec<u8>> {
         types,
         tls_global: tls_global.unwrap_or(1),
         targets,
+        scenario_check: by_name.get(SCENARIO_CHECK).copied(),
         exports,
         next_func: imported_funcs,
     };

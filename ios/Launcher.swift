@@ -280,15 +280,13 @@ struct LauncherView: View {
 
     @ViewBuilder var memoryView: some View {
         let gb = Double(memoryLimit()) / 1_073_741_824
-        let entitled = hasMemoryEntitlement()
-        if entitled == false {
+        Text(String(format: "Memory for the game: %.1f GB", gb)).font(.caption).foregroundStyle(.secondary)
+        if hasMemoryEntitlement() == false {
             Text("This build wasn't signed with the increased memory limit, so the game will likely close after a few minutes. Re-sign it with AltStore or a developer account.")
                 .font(.caption).foregroundStyle(.orange).multilineTextAlignment(.center)
         } else if gb < 4 {
-            Text(String(format: "iOS only gives Muguet %.1f GB of memory, so the game may close after a few minutes.", gb))
+            Text("That's not much for this game, so it may close after a few minutes.")
                 .font(.caption).foregroundStyle(.orange).multilineTextAlignment(.center)
-        } else {
-            Text(String(format: "Memory for the game: %.1f GB", gb)).font(.caption).foregroundStyle(.secondary)
         }
     }
 

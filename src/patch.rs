@@ -26,8 +26,10 @@ const HOOKS: &[(&str, &str, &[Arg])] = &[
 
 // the game walks its 6 blocking entities up to a null and runs off the array when all 6 are set, so it only gets to fill 5
 const SCENARIO_CHECK: &str = "CScenarioManager::PerformCollisionChecksForScenarioPoint(CScenarioManager::CollisionCheckParams const&)";
+// the port never starts the bink thread, so a queued movie never loads and stopping or deleting it waits forever: preloading fails instead
+const MOVIE_PRELOAD: &str = "CMovieMgr::PreloadMovie(char const*, bool)";
 
-pub const VERSION: u32 = 5;
+pub const VERSION: u32 = 6;
 
 fn returns(args: &[Arg]) -> bool {
     args.contains(&Arg::Local1Replaced) || args.contains(&Arg::MissingText)
@@ -40,6 +42,7 @@ struct Patcher {
 
     targets: HashMap<u32, usize>,
     scenario_check: Option<u32>,
+    movie_preload: Option<u32>,
     exports: Vec<(String, u32)>,
     next_func: u32,
 }
@@ -92,6 +95,17 @@ impl Reencode for Patcher {
             while !reader.eof() {
                 let i = self.parse_instruction(&mut reader)?;
                 f.instruction(if matches!(i, I::I32Const(6)) { &I::I32Const(5) } else { &i });
+            }
+            code.function(&f);
+            return Ok(());
+        }
+        if Some(index) == self.movie_preload {
+            use wasm_encoder::Instruction as I;
+            let mut f = self.new_function_with_parsed_locals(&func)?;
+            f.instruction(&I::I32Const(0)).instruction(&I::Return);
+            let mut reader = func.get_operators_reader()?;
+            while !reader.eof() {
+                f.instruction(&self.parse_instruction(&mut reader)?);
             }
             code.function(&f);
             return Ok(());
@@ -202,6 +216,7 @@ pub fn patch(wasm: &[u8], wanted: &[(&str, &str)]) -> Result<Vec<u8>> {
         tls_global: tls_global.unwrap_or(1),
         targets,
         scenario_check: by_name.get(SCENARIO_CHECK).copied(),
+        movie_preload: by_name.get(MOVIE_PRELOAD).copied(),
         exports,
         next_func: imported_funcs,
     };

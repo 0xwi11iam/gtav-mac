@@ -5,6 +5,7 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 import os
+import Metal
 
 func memoryLimit() -> UInt64 {
     var info = task_vm_info_data_t()
@@ -34,7 +35,35 @@ public func muguetMemoryEntitled() -> Int32 { hasMemoryEntitlement().map { $0 ? 
 let configURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     .appendingPathComponent("config.json")
 
+enum Preset: String, CaseIterable {
+    case battery, balanced, quality, max, custom
+
+    var title: String { ["Battery", "Balanced", "Quality", "Max", "Custom"][Preset.allCases.firstIndex(of: self)!] }
+    var values: (scale: Double, textures: Int, fps: Int)? {
+        switch self {
+        case .battery: return (0.35, 0, 30)
+        case .balanced: return (0.5, 0, 60)
+        case .quality: return (0.75, 1, 60)
+        case .max: return (1.0, 2, 60)
+        case .custom: return nil
+        }
+    }
+    var summary: String {
+        guard let v = values else { return "" }
+        return "\(Int(v.scale * 100)) % resolution · \(["Normal", "High", "Very High"][v.textures]) textures · \(v.fps) fps"
+    }
+
+    static let recommended: Preset = {
+        let gb = Double(memoryLimit()) / 1_073_741_824
+        let family = MTLCreateSystemDefaultDevice().map { d in (7...12).last { d.supportsFamily(MTLGPUFamily(rawValue: 1000 + $0)!) } ?? 0 } ?? 0
+        if gb < 4 || family < 8 { return .battery }
+        if family >= 9 && gb >= 5 { return .quality }
+        return .balanced
+    }()
+}
+
 final class Settings: ObservableObject {
+    @Published var preset = Preset.recommended
     @Published var mode = 2
     @Published var scale = 0.5
     @Published var fps = 60
@@ -52,6 +81,8 @@ final class Settings: ObservableObject {
         guard let data = try? Data(contentsOf: configURL),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
         extra = json
+        if let v = json["graphics_preset"] as? String, let p = Preset(rawValue: v) { preset = p }
+        else if json["texture_quality"] != nil { preset = .custom }
         if let v = json["start_mode"] as? Int, (1...2).contains(v) { mode = v }
         if let v = json["scale"] as? Double { scale = v }
         if let v = json["fps_limit"] as? Int { fps = v <= 0 ? 0 : v <= 30 ? 30 : 60 }
@@ -67,6 +98,8 @@ final class Settings: ObservableObject {
 
     func save() throws {
         var json = extra
+        if let v = preset.values { (scale, textures, fps) = v }
+        json["graphics_preset"] = preset.rawValue
         json["start_mode"] = mode
         json["scale"] = scale
         json["fps_limit"] = fps
@@ -159,6 +192,18 @@ struct LauncherView: View {
                     Text("Story Mode").tag(1)
                     Text("Sandbox").tag(2)
                 }
+                Picker("Graphics", selection: $s.preset) {
+                    ForEach(Preset.allCases, id: \.self) { p in
+                        Text(p == Preset.recommended ? "\(p.title) (recommended)" : p.title).tag(p)
+                    }
+                }
+                if s.preset != .custom {
+                    Text(s.preset.summary).font(.caption).foregroundStyle(.secondary)
+                }
+                if let rank = Preset.allCases.firstIndex(of: s.preset), s.preset != .custom, rank > Preset.allCases.firstIndex(of: Preset.recommended)! {
+                    Text("Heavier than recommended for this device: it may run slowly or close.").font(.caption).foregroundStyle(.orange)
+                }
+                if s.preset == .custom {
                 Picker("Resolution", selection: $s.scale) {
                     Text("35 % (fastest)").tag(0.35)
                     Text("50 %").tag(0.5)
@@ -174,6 +219,7 @@ struct LauncherView: View {
                     Text("30 fps (cooler)").tag(30)
                     Text("60 fps").tag(60)
                     Text("Uncapped (hotter)").tag(0)
+                }
                 }
                 HStack {
                     Text("Look sensitivity")

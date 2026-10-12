@@ -27,7 +27,7 @@ final class Settings: ObservableObject {
         extra = json
         if let v = json["start_mode"] as? Int, (1...2).contains(v) { mode = v }
         if let v = json["scale"] as? Double { scale = v }
-        if let v = json["fps_limit"] as? Int { fps = v == 30 ? 30 : 60 }
+        if let v = json["fps_limit"] as? Int { fps = v <= 0 ? 0 : v <= 30 ? 30 : 60 }
         if let v = json["texture_quality"] as? Int, (0...2).contains(v) { textures = v }
         if let v = json["touch_sensitivity"] as? Double { touch = v }
         if let v = json["mute"] as? Bool { mute = v }
@@ -143,6 +143,7 @@ struct LauncherView: View {
                 Picker("Frame limit", selection: $s.fps) {
                     Text("30 fps (cooler)").tag(30)
                     Text("60 fps").tag(60)
+                    Text("Uncapped (hotter)").tag(0)
                 }
                 HStack {
                     Text("Look sensitivity")

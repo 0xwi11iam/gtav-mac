@@ -24,9 +24,7 @@ const HOOKS: &[(&str, &str, &[Arg])] = &[
     ("muguet_text", "CTextFile::GetInternal(unsigned int)", &[Arg::MissingText]),
 ];
 
-// the game walks its 6 blocking entities up to a null and runs off the array when all 6 are set, so it only gets to fill 5
 const SCENARIO_CHECK: &str = "CScenarioManager::PerformCollisionChecksForScenarioPoint(CScenarioManager::CollisionCheckParams const&)";
-// the port never starts the bink thread, so a queued movie never loads and stopping or deleting it waits forever: preloading fails instead
 const MOVIE_PRELOAD: &str = "CMovieMgr::PreloadMovie(char const*, bool)";
 
 pub const VERSION: u32 = 6;

@@ -4,6 +4,32 @@
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
+import os
+
+func memoryLimit() -> UInt64 {
+    var info = task_vm_info_data_t()
+    var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
+    let kr = withUnsafeMutablePointer(to: &info) {
+        $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count) }
+    }
+    return UInt64(os_proc_available_memory()) + (kr == KERN_SUCCESS ? info.phys_footprint : 0)
+}
+
+func hasMemoryEntitlement() -> Bool? {
+    typealias Create = @convention(c) (CFAllocator?) -> Unmanaged<AnyObject>?
+    typealias Copy = @convention(c) (AnyObject, CFString, UnsafeMutableRawPointer?) -> Unmanaged<AnyObject>?
+    guard let sec = dlopen("/System/Library/Frameworks/Security.framework/Security", RTLD_NOW),
+          let create = dlsym(sec, "SecTaskCreateFromSelf"), let copy = dlsym(sec, "SecTaskCopyValueForEntitlement"),
+          let task = unsafeBitCast(create, to: Create.self)(nil)?.takeRetainedValue() else { return nil }
+    let value = unsafeBitCast(copy, to: Copy.self)(task, "com.apple.developer.kernel.increased-memory-limit" as CFString, nil)?.takeRetainedValue()
+    return (value as? Bool) ?? false
+}
+
+@_cdecl("muguet_memory_limit")
+public func muguetMemoryLimit() -> UInt64 { memoryLimit() }
+
+@_cdecl("muguet_memory_entitled")
+public func muguetMemoryEntitled() -> Int32 { hasMemoryEntitlement().map { $0 ? 1 : 0 } ?? -1 }
 
 let configURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     .appendingPathComponent("config.json")
@@ -121,6 +147,7 @@ struct LauncherView: View {
                 } else {
                     if let error { Text(error).foregroundStyle(.red).font(.callout).multilineTextAlignment(.center) }
                     playButton
+                    memoryView
                     Button("Import other game data…") { picking = true }.font(.caption)
                 }
                 Text("proudly made by c22dev").font(.caption).foregroundStyle(.secondary)
@@ -202,6 +229,20 @@ struct LauncherView: View {
                     .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
             if let e = importer.error { Text(e).foregroundStyle(.red).font(.callout).multilineTextAlignment(.center) }
+        }
+    }
+
+    @ViewBuilder var memoryView: some View {
+        let gb = Double(memoryLimit()) / 1_073_741_824
+        let entitled = hasMemoryEntitlement()
+        if entitled == false {
+            Text("This build wasn't signed with the increased memory limit, so the game will likely close after a few minutes. Re-sign it with AltStore or a developer account.")
+                .font(.caption).foregroundStyle(.orange).multilineTextAlignment(.center)
+        } else if gb < 4 {
+            Text(String(format: "iOS only gives Muguet %.1f GB of memory, so the game may close after a few minutes.", gb))
+                .font(.caption).foregroundStyle(.orange).multilineTextAlignment(.center)
+        } else {
+            Text(String(format: "Memory for the game: %.1f GB", gb)).font(.caption).foregroundStyle(.secondary)
         }
     }
 

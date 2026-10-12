@@ -248,18 +248,22 @@ final class RefreshRate: NSObject {
 
     @objc private func tick() {}
 
-    func hold() {
-        guard link == nil else { return }
+    func hold(_ hz: Float) {
+        link?.invalidate()
         let l = CADisplayLink(target: self, selector: #selector(tick))
-        l.preferredFrameRateRange = CAFrameRateRange(minimum: 120, maximum: 120, preferred: 120)
+        l.preferredFrameRateRange = CAFrameRateRange(minimum: hz, maximum: hz, preferred: hz)
         l.add(to: .main, forMode: .common)
         link = l
     }
 }
 
+@_cdecl("muguet_hold_refresh")
+public func muguetHoldRefresh(_ hz: Float) {
+    RefreshRate.shared.hold(hz)
+}
+
 @_cdecl("muguet_show_launcher")
 public func muguetShowLauncher(_ viewController: UnsafeMutableRawPointer, _ done: @convention(c) () -> Void) {
-    RefreshRate.shared.hold()
     let parent = Unmanaged<UIViewController>.fromOpaque(viewController).takeUnretainedValue()
     weak var sheet: UIViewController?
     let host = UIHostingController(rootView: LauncherView(play: {

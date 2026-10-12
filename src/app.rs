@@ -215,6 +215,7 @@ impl App {
         extern "C" fn played() { PLAY.store(true, Ordering::SeqCst); }
         extern "C" {
             fn muguet_show_launcher(view_controller: *mut std::ffi::c_void, done: extern "C" fn());
+            fn muguet_hold_refresh(hz: f32);
         }
         if self.started { return; }
         let Some(window) = self.window.clone() else { return };
@@ -232,6 +233,8 @@ impl App {
         }
         if PLAY.load(Ordering::SeqCst) {
             let settings = crate::config::reload();
+            let uncapped = settings.iter().any(|a| a == "-frameLimit=0");
+            unsafe { muguet_hold_refresh(if uncapped { 120.0 } else { 60.0 }) };
             self.args.retain(|a| !a.starts_with("-frameLimit=") && !a.starts_with("-wasmstartchoice="));
             self.args.extend(settings);
             self.start_engine();

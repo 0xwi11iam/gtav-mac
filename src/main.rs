@@ -11,6 +11,8 @@ mod input;
 mod import;
 mod io;
 #[cfg(target_os = "ios")]
+mod keyboard;
+#[cfg(target_os = "ios")]
 mod mouse;
 mod mp;
 mod pad;

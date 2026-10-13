@@ -57,6 +57,8 @@ const BUTTONS: &[Spec] = &[
     b(BottomRight(58.0, 168.0), 28.0, Some(("JUMP", Key("Space"))), Some(("H.BRAKE", Key("Space")))),
     b(BottomRight(140.0, 132.0), 26.0, Some(("ENTER", Key("KeyF"))), Some(("EXIT", Key("KeyF")))),
     b(BottomRight(222.0, 98.0), 24.0, Some(("RELOAD", Key("KeyR"))), Some(("HORN", Horn))),
+    b(BottomRight(140.0, 200.0), 26.0, None, Some(("SHOOT", Mouse(1)))),
+    b(BottomRight(222.0, 160.0), 24.0, None, Some(("DUCK", Key("KeyX")))),
     b(TopRight(30.0, 30.0), 22.0, Some(("WEAPON", Key("Tab"))), Some(("WEAPON", Key("Tab")))),
     b(TopRight(84.0, 30.0), 22.0, Some(("COVER", Key("KeyQ"))), Some(("RADIO", Key("KeyQ")))),
     b(TopRight(138.0, 30.0), 22.0, Some(("CROUCH", Key("ControlLeft"))), Some(("LOOK\nBACK", Key("KeyC")))),
@@ -411,8 +413,8 @@ impl Overlay {
             if nx < -0.35 { keys.insert("KeyA"); }
             if nx > 0.35 { keys.insert("KeyD"); }
             if self.in_car {
-                if ny < -0.6 { keys.insert("Numpad8"); }
-                if ny > 0.6 { keys.insert("Numpad2"); }
+                if ny < -0.6 { keys.insert("Numpad8"); keys.insert("ShiftLeft"); }
+                if ny > 0.6 { keys.insert("Numpad2"); keys.insert("ControlLeft"); }
             } else {
                 if ny < -0.35 { keys.insert("KeyW"); }
                 if ny > 0.35 { keys.insert("KeyS"); }

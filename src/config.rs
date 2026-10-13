@@ -166,7 +166,7 @@ fn settings(cfg_path: &Path) -> Vec<String> {
         engine_args.extend(extra.iter().filter_map(|a| a.as_str().map(String::from)));
     }
     if cfg!(target_os = "ios") && !engine_args.iter().any(|a| a.to_ascii_lowercase().starts_with("-framequeuelimit")) {
-        engine_args.push("-FrameQueueLimit=3".into());
+        engine_args.push("-FrameQueueLimit=4".into());
     }
     fix_settings(num("texture_quality").map(|q| q as i64), flag("no_msaa"));
     engine_args

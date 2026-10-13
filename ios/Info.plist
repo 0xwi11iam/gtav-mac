@@ -20,6 +20,7 @@
   <key>UIFileSharingEnabled</key><true/>
   <key>LSSupportsOpeningDocumentsInPlace</key><true/>
   <key>LSApplicationCategoryType</key><string>public.app-category.action-games</string>
+  <key>UIApplicationSupportsIndirectInputEvents</key><true/>
   <key>GCSupportsGameMode</key><true/>
   <key>GCSupportsControllerUserInteraction</key><true/>
   <key>GCSupportedGameControllers</key>

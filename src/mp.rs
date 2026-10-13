@@ -378,8 +378,6 @@ static WANT_BULLETS: AtomicBool = AtomicBool::new(false);
 static TXD: Mutex<(String, Option<HashMap<String, (Instant, bool)>>)> = Mutex::new((String::new(), None));
 const TXD_PATIENCE: Duration = Duration::from_secs(3);
 
-// called with (name, 0) when a script asks whether a texture dictionary is loaded, then with (0, answer + 1).
-// one that has been missing for a while is reported as loaded, since a script would otherwise wait on it forever
 pub fn txd_loaded(name: u64, answer: i64) -> i64 {
     let mut t = TXD.lock().unwrap();
     if answer == 0 {

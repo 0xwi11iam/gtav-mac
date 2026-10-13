@@ -38,7 +38,6 @@ fn backbuffer_size(window: &Window) -> (i32, i32) {
     let k = (2560.0 / w).min(1440.0 / h).min(1.0);
     w *= k;
     h *= k;
-    // the game only lays its hud out for widescreen above 3:2, and on narrower screens the button prompts run off the right edge
     if cfg!(target_os = "ios") && w <= h * 1.5 {
         w = h * 1.5 + 2.0;
     }

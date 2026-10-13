@@ -24,7 +24,6 @@ const HOOKS: &[(&str, &str, &[Arg])] = &[
     ("muguet_explosion", "CExplosionManager::AddExplosion(CExplosionManager::CExplosionArgs&, CProjectile*, bool)", &[Arg::Local0]),
     ("muguet_timewarp", "CTimeWarper::SetTargetTimeWarp(TW_Dir)", &[Arg::Local1Replaced]),
     ("muguet_text", "CTextFile::GetInternal(unsigned int)", &[Arg::MissingText]),
-    // a texture dictionary the data does not have never loads, and scripts wait on it forever: the host sees every check and its answer
     ("muguet_txd", "graphics_commands::HasStreamedTxdLoaded(char const*)", &[Arg::TxdLoaded, Arg::TxdLoaded]),
 ];
 
@@ -127,7 +126,6 @@ impl Reencode for Patcher {
                 f.instruction(&I::End);
             }
         } else if HOOKS[hook].2.first() == Some(&Arg::TxdLoaded) {
-            // the name goes in first, then the answer in local 2 is passed through the host just before it is returned
             f.instruction(&I::LocalGet(0)).instruction(&I::I64Const(0)).instruction(&call).instruction(&I::Drop);
             let mut reader = func.get_operators_reader()?;
             let mut last = None;

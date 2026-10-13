@@ -19,7 +19,6 @@ pub fn script_tick(menu: bool) {
     MENU.store(menu, Ordering::Relaxed);
     *SCRIPT_TICK.lock().unwrap() = Some(Instant::now());
 }
-// scripts stop ticking while the game is paused, so a stale tick counts as a menu too
 #[cfg_attr(not(target_os = "ios"), allow(dead_code))]
 pub fn in_menu() -> bool {
     MENU.load(Ordering::Relaxed) || SCRIPT_TICK.lock().unwrap().is_some_and(|t| t.elapsed() > Duration::from_millis(500))

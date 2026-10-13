@@ -7,7 +7,7 @@ use crate::{
 };
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex};
 use wasmtime::{Caller, SharedMemory, Val};
 
@@ -123,6 +123,7 @@ pub fn call(mut caller: Caller<'_, HostState>, idx: usize, params: &[Val], resul
         "muguet_script" => crate::mp::script_tick(&mut caller, int(params, 0) as u64, int(params, 1) as u64)?,
         "muguet_explosion" => crate::mp::explosion(int(params, 0) as u64),
         "muguet_timewarp" => set_int(results, crate::mp::time_warp(int(params, 0))),
+        "muguet_pool" => set_int(results, pool_grow(int(params, 0) as u64) as i64),
         "muguet_txd" => set_int(results, crate::mp::txd_loaded(int(params, 0) as u64, int(params, 1))),
         "muguet_text" => set_int(results, missing_text(&mut caller, int(params, 0) as u32)? as i64),
         "__pthread_create_js" => {
@@ -242,6 +243,24 @@ fn invoke(caller: &mut Caller<'_, HostState>, params: &[Val], results: &mut [Val
         }
         Err(e) => Err(anyhow::Error::from(e)),
     }
+}
+
+// the game's streaming pool grows in 256 MB steps up to 8 GB and the heap never shrinks, so on ios growth stops at a cap
+// (MUGUET_POOL_CAP_MB, 2560 MB by default) and the game evicts older assets instead
+const STEP: u64 = 256 << 20;
+
+fn pool_grow(size: u64) -> bool {
+    static CAP: LazyLock<u64> = LazyLock::new(|| {
+        let mb = std::env::var("MUGUET_POOL_CAP_MB").ok().and_then(|v| v.parse::<u64>().ok());
+        mb.map(|mb| mb << 20).unwrap_or(if cfg!(target_os = "ios") { 2560 << 20 } else { u64::MAX })
+    });
+    // the size reads just under each step, and growth adds a whole step
+    let ok = size.saturating_add(STEP) <= CAP.saturating_add(16 << 20);
+    static TOLD: AtomicBool = AtomicBool::new(false);
+    if !ok && !TOLD.swap(true, Ordering::Relaxed) {
+        eprintln!("[host] streaming pool at {} MB, not growing it past the {} MB cap", size >> 20, *CAP >> 20);
+    }
+    ok
 }
 
 fn resize_heap(mem: &SharedMemory, requested: u64) -> bool {

@@ -185,6 +185,7 @@ impl Spec {
 }
 
 
+
 const STICK_RADIUS: f64 = 58.0;
 const KNOB_RADIUS: f64 = 26.0;
 const SPRINT_REACH: f64 = 1.35;
@@ -208,6 +209,7 @@ enum Grip {
 struct Btn {
     view: Retained<AnyObject>,
     label: Retained<AnyObject>,
+    icon: Retained<AnyObject>,
     center: (f64, f64),
     radius: f64,
 }
@@ -334,11 +336,112 @@ fn label(parent: &AnyObject, r: f64) -> Retained<AnyObject> {
     }
 }
 
+// an SF Symbol for each button, so the overlay reads like a game hud rather than a row of words
+fn symbol(label: &str) -> Option<&'static str> {
+    Some(match label {
+        "PUNCH" => "hand.raised.fill",
+        "FIRE" | "SHOOT" => "target",
+        "ATTACK" => "bolt.fill",
+        "THROW" => "arrow.up.right.circle.fill",
+        "AIM" => "scope",
+        "RELOAD" => "arrow.triangle.2.circlepath",
+        "JUMP" => "chevron.up.2",
+        "ENTER" => "car.fill",
+        "EXIT" => "rectangle.portrait.and.arrow.right",
+        "WEAPON" => "circle.hexagongrid.fill",
+        "COVER" => "shield.fill",
+        "CROUCH" => "chevron.down.2",
+        "CAM" => "eye.fill",
+        "PAUSE" => "pause.fill",
+        "PHONE" => "iphone",
+        "MENU\nKEYS" => "keyboard",
+        "SWITCH" => "person.2.fill",
+        "MODS" => "wrench.and.screwdriver.fill",
+        "GAS" | "THRUST" => "arrow.up",
+        "BRAKE" | "SLOW" | "REVERSE" => "arrow.down",
+        "H.BRAKE" => "parkingsign",
+        "HORN" => "speaker.wave.3.fill",
+        "DUCK" => "arrow.down.to.line",
+        "LOOK\nBACK" => "arrow.uturn.backward",
+        "LIGHTS" => "lightbulb.fill",
+        "RADIO" => "music.note",
+        "UP" | "RISE" => "arrow.up.to.line",
+        "DOWN" | "DIVE" => "arrow.down.to.line",
+        "YAW\nLEFT" => "arrow.counterclockwise",
+        "YAW\nRIGHT" => "arrow.clockwise",
+        "GEAR" => "chevron.down.circle",
+        "PEDAL" => "bicycle",
+        "SPRINT" => "hare.fill",
+        "HOP" => "arrow.up.forward",
+        "DROP\nCAR" | "DROP\nTRAILER" | "DROP\nLOAD" => "link.badge.minus",
+        "LOWER\nROPE" => "arrow.down.circle",
+        "VTOL" => "airplane",
+        "ROOF" => "sun.max.fill",
+        "OK" => "checkmark",
+        "BACK" => "arrow.uturn.left",
+        _ => return None,
+    })
+}
+
+fn icon_view(parent: &AnyObject, r: f64) -> Retained<AnyObject> {
+    unsafe {
+        let v: Retained<AnyObject> = msg_send![class!(UIImageView), new];
+        let _: () = msg_send![&*v, setFrame: rect(0.0, 0.0, 2.0 * r, 2.0 * r)];
+        let _: () = msg_send![&*v, setUserInteractionEnabled: false];
+        let _: () = msg_send![&*v, setContentMode: 4isize];
+        let _: () = msg_send![&*v, setTintColor: &*color(1.0, 0.95)];
+        let _: () = msg_send![parent, addSubview: &*v];
+        v
+    }
+}
+
+fn set_content(b: &Btn, text: &str) {
+    let image: Option<Retained<AnyObject>> = symbol(text).and_then(|name| unsafe {
+        let config: Retained<AnyObject> = msg_send![class!(UIImageSymbolConfiguration), configurationWithPointSize: (b.radius * 0.8).clamp(12.0, 30.0), weight: 6isize];
+        msg_send![class!(UIImage), systemImageNamed: &*NSString::from_str(name), withConfiguration: &*config]
+    });
+    let d = 2.0 * b.radius;
+    unsafe {
+        let _: () = msg_send![&*b.icon, setImage: image.as_deref().map_or(std::ptr::null(), |i| i as *const AnyObject)];
+        // with an icon the label becomes a small caption under it
+        let (frame, size, lines) = if image.is_some() {
+            let _: () = msg_send![&*b.icon, setFrame: rect(0.0, d * 0.06, d, d * 0.6)];
+            (rect(3.0, d * 0.64, d - 6.0, d * 0.24), (b.radius * 0.3).clamp(7.0, 10.0), 1isize)
+        } else {
+            (rect(2.0, 0.0, d - 4.0, d), (b.radius * 0.42).clamp(9.0, 15.0), 2isize)
+        };
+        let _: () = msg_send![&*b.label, setFrame: frame];
+        let font: Retained<AnyObject> = msg_send![class!(UIFont), boldSystemFontOfSize: size];
+        let _: () = msg_send![&*b.label, setFont: &*font];
+        let _: () = msg_send![&*b.label, setNumberOfLines: lines];
+    }
+    set_hidden(&b.icon, image.is_none());
+    set_text(&b.label, &if image.is_some() { text.replace('\n', " ") } else { text.to_string() });
+}
+
 fn set_text(l: &AnyObject, text: &str) {
     unsafe { let _: () = msg_send![l, setText: &*NSString::from_str(text)]; }
 }
 fn set_hidden(v: &AnyObject, hidden: bool) {
     unsafe { let _: () = msg_send![v, setHidden: hidden]; }
+}
+// buttons look like the game's hud: a dark disc with a thin light ring, filled white while held
+fn style_button(v: &AnyObject, label: &AnyObject, icon: &AnyObject, state: u8) {
+    let (bg, ring, text) = match state {
+        2 => (color(1.0, 0.85), 1.0, 0.0),
+        1 => (color(1.0, 0.35), 0.9, 1.0),
+        _ => (color(0.0, 0.38), 0.55, 1.0),
+    };
+    unsafe {
+        let _: () = msg_send![v, setBackgroundColor: &*bg];
+        let layer: *mut AnyObject = msg_send![v, layer];
+        let _: () = msg_send![layer, setBorderWidth: 1.5f64];
+        let ring = color(1.0, ring);
+        let cg: *mut std::ffi::c_void = msg_send![&*ring, CGColor];
+        let _: () = msg_send![layer, setBorderColor: cg];
+        let _: () = msg_send![label, setTextColor: &*color(text, 0.95)];
+        let _: () = msg_send![icon, setTintColor: &*color(text, 0.95)];
+    }
 }
 fn set_alpha_bg(v: &AnyObject, alpha: f64) {
     unsafe { let _: () = msg_send![v, setBackgroundColor: &*color(1.0, alpha)]; }
@@ -379,7 +482,8 @@ pub fn install(window: &Window) {
             let center = place(s.anchor);
             let view = circle(&root, center, s.radius, 1.0, 0.18);
             let label = label(&view, s.radius);
-            Btn { view, label, center, radius: s.radius }
+            let icon = icon_view(&view, s.radius);
+            Btn { view, label, icon, center, radius: s.radius }
         })
         .collect();
     let stick_home = (sx + 40.0 + STICK_RADIUS, sy + sh - 30.0 - STICK_RADIUS);
@@ -418,7 +522,7 @@ impl Overlay {
             let act = self.spec_act(i);
             let b = &self.buttons[i];
             set_hidden(&b.view, act.is_none());
-            if let Some((text, _)) = act { set_text(&b.label, text); }
+            if let Some((text, _)) = act { set_content(b, text); }
         }
         self.restyle();
     }
@@ -428,7 +532,7 @@ impl Overlay {
         for (i, b) in self.buttons.iter().enumerate() {
             let latched = self.aim_latched && matches!(self.spec_act(i), Some((_, AimToggle)))
                 || self.nav && matches!(self.spec_act(i), Some((_, NavToggle)));
-            set_alpha_bg(&b.view, if pressed.contains(&i) { 0.45 } else if latched { 0.35 } else { 0.18 });
+            style_button(&b.view, &b.label, &b.icon, if pressed.contains(&i) { 2 } else if latched { 1 } else { 0 });
         }
     }
 

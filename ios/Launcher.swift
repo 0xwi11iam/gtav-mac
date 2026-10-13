@@ -71,6 +71,7 @@ final class Settings: ObservableObject {
     @Published var touch = 1.0
     @Published var mute = false
     @Published var showFps = false
+    @Published var noMsaa = true
     @Published var multiplayer = false
     @Published var host = false
     @Published var server = ""
@@ -90,6 +91,7 @@ final class Settings: ObservableObject {
         if let v = json["touch_sensitivity"] as? Double { touch = v }
         if let v = json["mute"] as? Bool { mute = v }
         if let v = json["show_fps"] as? Bool { showFps = v }
+        if let v = json["no_msaa"] as? Bool { noMsaa = v }
         if let v = json["multiplayer"] as? Bool { multiplayer = v }
         if let v = json["host"] as? Bool { host = v }
         if let v = json["server"] as? String { server = v }
@@ -107,6 +109,7 @@ final class Settings: ObservableObject {
         json["touch_sensitivity"] = (touch * 100).rounded() / 100
         json["mute"] = mute
         json["show_fps"] = showFps
+        json["no_msaa"] = noMsaa
         json["multiplayer"] = multiplayer
         json["host"] = host
         json["server"] = server.trimmingCharacters(in: .whitespaces)
@@ -228,6 +231,7 @@ struct LauncherView: View {
                 }
                 Toggle("Mute audio", isOn: $s.mute)
                 Toggle("Show frame rate", isOn: $s.showFps)
+                Toggle("Turn off MSAA and TXAA (saves memory)", isOn: $s.noMsaa)
                 Section("Multiplayer") {
                     Toggle("Play with friends", isOn: $s.multiplayer)
                     if s.multiplayer {

@@ -23,6 +23,10 @@ enum Act {
     NavToggle,
 
     Horn,
+
+    // a game control action held while the button is down, at this value
+    Ctrl(i32, f32),
+    Req(crate::pad::Request),
 }
 
 #[derive(Clone, Copy)]
@@ -34,39 +38,122 @@ enum Anchor {
     Nav(f64, f64),
 }
 
+// layouts, indexed by the mode the overlay is in (pad::MODE_*)
+const FOOT: usize = 0;
+const HELI: usize = 3;
+const PLANE: usize = 4;
+const SUB: usize = 6;
+const MODES: usize = 9;
+
+type Slot = Option<(&'static str, Act)>;
+
 struct Spec {
     anchor: Anchor,
     radius: f64,
-    on_foot: Option<(&'static str, Act)>,
-    in_car: Option<(&'static str, Act)>,
+    acts: [Slot; MODES],
+    // pad::CTX_* bits the vehicle must have for the button to show
+    need: u32,
+    // and must not have
+    unless: u32,
     nav: bool,
 }
 
-const fn b(anchor: Anchor, radius: f64, on_foot: Option<(&'static str, Act)>, in_car: Option<(&'static str, Act)>) -> Spec {
-    Spec { anchor, radius, on_foot, in_car, nav: false }
+const fn b(anchor: Anchor, radius: f64, acts: [Slot; MODES]) -> Spec {
+    Spec { anchor, radius, acts, need: 0, unless: 0, nav: false }
+}
+// the same action in every layout
+const fn all(anchor: Anchor, radius: f64, label: &'static str, act: Act) -> Spec {
+    b(anchor, radius, [Some((label, act)); MODES])
+}
+// the same action in every vehicle the player drives
+const fn driving(anchor: Anchor, radius: f64, slot: Slot) -> Spec {
+    b(anchor, radius, [None, slot, slot, slot, slot, slot, slot, slot, None])
+}
+// shown only while the vehicle is in a given state
+const fn when(need: u32, anchor: Anchor, label: &'static str, act: Act) -> Spec {
+    let slot = Some((label, act));
+    Spec { anchor, radius: 24.0, acts: [None, slot, slot, slot, slot, slot, slot, slot, None], need, unless: 0, nav: false }
 }
 const fn n(x: f64, label: &'static str, key: &'static str) -> Spec {
-    Spec { anchor: Anchor::Nav(x, 0.0), radius: 21.0, on_foot: Some((label, Act::Key(key))), in_car: Some((label, Act::Key(key))), nav: true }
+    Spec { anchor: Anchor::Nav(x, 0.0), radius: 21.0, acts: [Some((label, Act::Key(key))); MODES], need: 0, unless: 0, nav: true }
+}
+const fn on(label: &'static str, control: i32) -> Slot {
+    Some((label, Act::Ctrl(control, 1.0)))
 }
 
+// game control actions, numbered as in the game's InputType enum
+const VEH_MOVE_LR: i32 = 59;
+const VEH_MOVE_UD: i32 = 60;
+const VEH_ATTACK: i32 = 69;
+const VEH_ACCELERATE: i32 = 71;
+const VEH_BRAKE: i32 = 72;
+const VEH_DUCK: i32 = 73;
+const VEH_HEADLIGHT: i32 = 74;
+const VEH_EXIT: i32 = 75;
+const VEH_HANDBRAKE: i32 = 76;
+const VEH_LOOK_BEHIND: i32 = 79;
+const VEH_FLY_THROTTLE_UP: i32 = 87;
+const VEH_FLY_THROTTLE_DOWN: i32 = 88;
+const VEH_FLY_YAW_LEFT: i32 = 89;
+const VEH_FLY_YAW_RIGHT: i32 = 90;
+const VEH_PASSENGER_AIM: i32 = 91;
+const VEH_PASSENGER_ATTACK: i32 = 92;
+const VEH_ROOF: i32 = 101;
+const VEH_FLY_ROLL_LR: i32 = 107;
+const VEH_FLY_PITCH_UD: i32 = 110;
+const VEH_FLY_UNDERCARRIAGE: i32 = 113;
+const VEH_FLY_ATTACK: i32 = 114;
+const VEH_FLY_VERTICAL_FLIGHT_MODE: i32 = 119;
+const VEH_SUB_TURN_LR: i32 = 123;
+const VEH_SUB_PITCH_UD: i32 = 126;
+const VEH_SUB_THROTTLE_UP: i32 = 129;
+const VEH_SUB_THROTTLE_DOWN: i32 = 130;
+const VEH_SUB_ASCEND: i32 = 131;
+const VEH_SUB_DESCEND: i32 = 132;
+const VEH_PUSHBIKE_PEDAL: i32 = 136;
+const VEH_PUSHBIKE_SPRINT: i32 = 137;
+const VEH_PUSHBIKE_FRONT_BRAKE: i32 = 138;
+
+use crate::pad::{CTX_CARGOBOB, CTX_CONVERTIBLE, CTX_ROPE, CTX_TOWING, CTX_TRAILER, CTX_VTOL};
+use crate::pad::Request as R;
 use Act::*;
 use Anchor::*;
+const GAS: Slot = on("GAS", VEH_ACCELERATE);
+const BRAKE: Slot = on("BRAKE", VEH_BRAKE);
+const HBRAKE: Slot = on("H.BRAKE", VEH_HANDBRAKE);
+const HORN: Slot = Some(("HORN", Horn));
+const SHOOT: Slot = on("SHOOT", VEH_ATTACK);
+const AIR_SHOOT: Slot = on("SHOOT", VEH_FLY_ATTACK);
+const DUCK: Slot = on("DUCK", VEH_DUCK);
+const RADIO: Slot = Some(("RADIO", Key("KeyQ")));
+const BACK: Slot = on("LOOK\nBACK", VEH_LOOK_BEHIND);
+const YAW_L: Slot = on("YAW\nLEFT", VEH_FLY_YAW_LEFT);
+const YAW_R: Slot = on("YAW\nRIGHT", VEH_FLY_YAW_RIGHT);
 const BUTTONS: &[Spec] = &[
-    b(BottomRight(62.0, 68.0), 40.0, Some(("FIRE", Mouse(1))), Some(("GAS", Key("KeyW")))),
-    b(BottomRight(158.0, 46.0), 31.0, Some(("AIM", AimToggle)), Some(("BRAKE", Key("KeyS")))),
-    b(BottomRight(58.0, 168.0), 28.0, Some(("JUMP", Key("Space"))), Some(("H.BRAKE", Key("Space")))),
-    b(BottomRight(140.0, 132.0), 26.0, Some(("ENTER", Key("KeyF"))), Some(("EXIT", Key("KeyF")))),
-    b(BottomRight(222.0, 98.0), 24.0, Some(("RELOAD", Key("KeyR"))), Some(("HORN", Horn))),
-    b(BottomRight(140.0, 200.0), 26.0, None, Some(("SHOOT", Mouse(1)))),
-    b(BottomRight(222.0, 160.0), 24.0, None, Some(("DUCK", Key("KeyX")))),
-    b(TopRight(30.0, 30.0), 22.0, Some(("WEAPON", Key("Tab"))), Some(("WEAPON", Key("Tab")))),
-    b(TopRight(84.0, 30.0), 22.0, Some(("COVER", Key("KeyQ"))), Some(("RADIO", Key("KeyQ")))),
-    b(TopRight(138.0, 30.0), 22.0, Some(("CROUCH", Key("ControlLeft"))), Some(("LOOK\nBACK", Key("KeyC")))),
-    b(TopRight(192.0, 30.0), 22.0, Some(("CAM", Key("KeyV"))), Some(("CAM", Key("KeyV")))),
-    b(TopLeft(30.0, 30.0), 22.0, Some(("PAUSE", KeyNav("Escape"))), Some(("PAUSE", KeyNav("Escape")))),
-    b(TopLeft(84.0, 30.0), 22.0, Some(("PHONE", KeyNav("ArrowUp"))), Some(("PHONE", KeyNav("ArrowUp")))),
-    b(TopLeft(138.0, 30.0), 22.0, Some(("MENU\nKEYS", NavToggle)), Some(("MENU\nKEYS", NavToggle))),
-    b(TopLeft(192.0, 30.0), 22.0, Some(("SWITCH", Key("AltLeft"))), Some(("SWITCH", Key("AltLeft")))),
+    //                                          foot                       car     bike    heli                                plane                                 boat                    sub                                    bicycle                                    passenger
+    b(BottomRight(62.0, 68.0), 40.0, [Some(("FIRE", Mouse(1))), GAS, GAS, on("UP", VEH_FLY_THROTTLE_UP), on("THRUST", VEH_FLY_THROTTLE_UP), GAS, on("GAS", VEH_SUB_THROTTLE_UP), on("PEDAL", VEH_PUSHBIKE_PEDAL), on("SHOOT", VEH_PASSENGER_ATTACK)]),
+    b(BottomRight(158.0, 46.0), 31.0, [Some(("AIM", AimToggle)), BRAKE, BRAKE, on("DOWN", VEH_FLY_THROTTLE_DOWN), on("SLOW", VEH_FLY_THROTTLE_DOWN), on("REVERSE", VEH_BRAKE), on("REVERSE", VEH_SUB_THROTTLE_DOWN), on("BRAKE", VEH_PUSHBIKE_FRONT_BRAKE), on("AIM", VEH_PASSENGER_AIM)]),
+    b(BottomRight(58.0, 168.0), 28.0, [Some(("JUMP", Key("Space"))), HBRAKE, HBRAKE, YAW_L, YAW_L, None, on("RISE", VEH_SUB_ASCEND), on("HOP", VEH_HANDBRAKE), None]),
+    all(BottomRight(140.0, 132.0), 26.0, "EXIT", Ctrl(VEH_EXIT, 1.0)).foot(Some(("ENTER", Key("KeyF")))),
+    b(BottomRight(222.0, 98.0), 24.0, [Some(("RELOAD", Key("KeyR"))), HORN, HORN, YAW_R, YAW_R, HORN, on("DIVE", VEH_SUB_DESCEND), on("SPRINT", VEH_PUSHBIKE_SPRINT), None]),
+    b(BottomRight(140.0, 200.0), 24.0, [None, SHOOT, SHOOT, AIR_SHOOT, AIR_SHOOT, None, None, None, None]),
+    b(BottomRight(222.0, 160.0), 24.0, [None, DUCK, DUCK, None, on("GEAR", VEH_FLY_UNDERCARRIAGE), None, None, None, DUCK]),
+    // only while it applies
+    when(CTX_TOWING, BottomRight(300.0, 70.0), "DROP\nCAR", Req(R::DropTow)),
+    when(CTX_TRAILER, BottomRight(300.0, 70.0), "DROP\nTRAILER", Req(R::DropTrailer)),
+    when(CTX_CARGOBOB, BottomRight(300.0, 70.0), "LOWER\nROPE", Req(R::Rope)).unless(CTX_ROPE),
+    when(CTX_CARGOBOB | CTX_ROPE, BottomRight(300.0, 70.0), "DROP\nLOAD", Req(R::Rope)),
+    when(CTX_VTOL, BottomRight(300.0, 70.0), "VTOL", Ctrl(VEH_FLY_VERTICAL_FLIGHT_MODE, 1.0)),
+    when(CTX_CONVERTIBLE, BottomRight(300.0, 132.0), "ROOF", Ctrl(VEH_ROOF, 1.0)),
+    all(TopRight(30.0, 30.0), 22.0, "WEAPON", Key("Tab")),
+    b(TopRight(84.0, 30.0), 22.0, [Some(("COVER", Key("KeyQ"))), RADIO, RADIO, RADIO, RADIO, RADIO, RADIO, None, RADIO]),
+    b(TopRight(138.0, 30.0), 22.0, [Some(("CROUCH", Key("ControlLeft"))), BACK, BACK, None, None, BACK, None, BACK, BACK]),
+    all(TopRight(192.0, 30.0), 22.0, "CAM", Key("KeyV")),
+    driving(TopRight(246.0, 30.0), 22.0, on("LIGHTS", VEH_HEADLIGHT)),
+    all(TopLeft(30.0, 30.0), 22.0, "PAUSE", KeyNav("Escape")),
+    all(TopLeft(84.0, 30.0), 22.0, "PHONE", KeyNav("ArrowUp")),
+    all(TopLeft(138.0, 30.0), 22.0, "MENU\nKEYS", NavToggle),
+    all(TopLeft(192.0, 30.0), 22.0, "SWITCH", Key("AltLeft")),
     n(-135.0, "◀", "ArrowLeft"),
     n(-87.0, "▲", "ArrowUp"),
     n(-39.0, "▼", "ArrowDown"),
@@ -74,6 +161,18 @@ const BUTTONS: &[Spec] = &[
     n(63.0, "OK", "Enter"),
     n(117.0, "BACK", "Backspace"),
 ];
+
+impl Spec {
+    const fn unless(mut self, bits: u32) -> Spec {
+        self.unless = bits;
+        self
+    }
+    const fn foot(mut self, slot: Slot) -> Spec {
+        self.acts[FOOT] = slot;
+        self
+    }
+}
+
 
 const STICK_RADIUS: f64 = 58.0;
 const KNOB_RADIUS: f64 = 26.0;
@@ -123,8 +222,12 @@ struct Overlay {
     aim_latched: bool,
     nav: bool,
     in_car: bool,
+    mode: usize,
+    ctx: u32,
     menu: bool,
     hidden: bool,
+    ctrl_since: HashMap<i32, std::time::Instant>,
+    injected: Vec<(i32, f32)>,
 }
 
 thread_local! {
@@ -275,7 +378,8 @@ pub fn install(window: &Window) {
         root, buttons, stick_base, stick_knob, stick_home, safe, full: (full.width, full.height), scale,
         grips: HashMap::new(), held: HashSet::new(), since: HashMap::new(),
         mouse_since: [std::time::Instant::now(); 2], lingering: false, mouse: 0, aim_latched: false,
-        nav: false, in_car: false, menu: false, hidden: false,
+        nav: false, in_car: false, mode: FOOT, ctx: 0, menu: false, hidden: false,
+        ctrl_since: HashMap::new(), injected: Vec::new(),
     };
     o.relabel();
     eprintln!("[touch] overlay ready ({:.0}x{:.0} pt, safe area {:.0},{:.0} {:.0}x{:.0})", full.width, full.height, sx, sy, sw, sh);
@@ -294,7 +398,8 @@ impl Overlay {
     fn spec_act(&self, idx: usize) -> Option<(&'static str, Act)> {
         let s = &BUTTONS[idx];
         if s.nav && !self.nav { return None; }
-        if self.in_car { s.in_car } else { s.on_foot }
+        if s.need & self.ctx != s.need || s.unless & self.ctx != 0 { return None; }
+        s.acts[self.mode]
     }
 
     fn relabel(&mut self) {
@@ -344,6 +449,7 @@ impl Overlay {
                         Some(AimToggle) => self.aim_latched = !self.aim_latched,
                         Some(NavToggle) => { self.nav = !self.nav; self.relabel(); }
                         Some(KeyNav(_)) if !self.nav => { self.nav = true; self.relabel(); }
+                        Some(Req(r)) => crate::pad::request(r),
                         _ => {}
                     }
                 } else if self.menu {
@@ -385,6 +491,7 @@ impl Overlay {
         let mut mouse = if self.aim_latched && !self.in_car { 2u8 } else { 0 };
         let mut stick = None;
         let mut horn = false;
+        let mut inject: Vec<(i32, f32)> = Vec::new();
         let mut clicking = false;
         self.grips.retain(|_, g| !matches!(g, Grip::Cursor { since, up: true } if since.elapsed() >= CLICK_DELAY + MIN_HOLD));
         for g in self.grips.values() {
@@ -394,6 +501,7 @@ impl Overlay {
                     Some(Key(k)) | Some(KeyNav(k)) => { keys.insert(k); }
                     Some(Mouse(bit)) => mouse |= bit,
                     Some(Horn) => horn = true,
+                    Some(Ctrl(c, v)) => inject.push((c, v)),
                     _ => {}
                 },
                 Grip::Look { .. } => {}
@@ -410,14 +518,27 @@ impl Overlay {
             dx *= k;
             dy *= k;
             let (nx, ny) = (dx / STICK_RADIUS, dy / STICK_RADIUS);
-            if nx < -0.35 { keys.insert("KeyA"); }
-            if nx > 0.35 { keys.insert("KeyD"); }
-            if self.in_car {
-                if ny < -0.6 { keys.insert("Numpad8"); keys.insert("ShiftLeft"); }
-                if ny > 0.6 { keys.insert("Numpad2"); keys.insert("ControlLeft"); }
-            } else {
-                if ny < -0.35 { keys.insert("KeyW"); }
-                if ny > 0.35 { keys.insert("KeyS"); }
+            let dead = |v: f64| if v.abs() < 0.15 { 0.0 } else { v as f32 };
+            match self.mode {
+                FOOT => {
+                    if nx < -0.35 { keys.insert("KeyA"); }
+                    if nx > 0.35 { keys.insert("KeyD"); }
+                    if ny < -0.35 { keys.insert("KeyW"); }
+                    if ny > 0.35 { keys.insert("KeyS"); }
+                }
+                // the stick is the left stick of a pad: steer and lean (or the tow arm), or roll and pitch in the air
+                HELI | PLANE => {
+                    inject.push((VEH_FLY_ROLL_LR, dead(nx)));
+                    inject.push((VEH_FLY_PITCH_UD, dead(ny)));
+                }
+                SUB => {
+                    inject.push((VEH_SUB_TURN_LR, dead(nx)));
+                    inject.push((VEH_SUB_PITCH_UD, dead(ny)));
+                }
+                _ => {
+                    inject.push((VEH_MOVE_LR, dead(nx)));
+                    inject.push((VEH_MOVE_UD, dead(ny)));
+                }
             }
             let sprint = !self.in_car && len > STICK_RADIUS * SPRINT_REACH;
             if sprint { keys.insert("ShiftLeft"); }
@@ -456,6 +577,15 @@ impl Overlay {
             }
         }
         self.mouse = mouse;
+        for (c, v) in self.injected.clone() {
+            if v == 0.0 || inject.iter().any(|(k, _)| *k == c) { continue; }
+            if young(self.ctrl_since.get(&c)) { inject.push((c, v)); self.lingering = true; }
+        }
+        for (c, _) in &inject {
+            if !self.injected.iter().any(|(k, _)| k == c) { self.ctrl_since.insert(*c, now); }
+        }
+        *crate::pad::INJECT.lock().unwrap() = inject.clone();
+        self.injected = inject;
         self.restyle();
     }
 
@@ -508,13 +638,21 @@ pub fn refresh() -> bool {
         if menu != o.menu && !o.hidden {
             o.grips.retain(|_, g| matches!(g, Grip::Button { .. }));
             o.menu = menu;
+            eprintln!("[touch] menu cursor {}", if menu { "on" } else { "off" });
             o.apply();
         }
-        let in_car = crate::pad::IN_VEHICLE.load(std::sync::atomic::Ordering::Relaxed);
-        if in_car != o.in_car && !o.hidden {
+        let mode = (crate::pad::VEH_MODE.load(std::sync::atomic::Ordering::Relaxed) as usize).min(MODES - 1);
+        let ctx = crate::pad::CONTEXT.load(std::sync::atomic::Ordering::Relaxed);
+        if ctx != o.ctx && mode == o.mode && !o.hidden {
+            o.ctx = ctx;
+            o.relabel();
+        }
+        if mode != o.mode && !o.hidden {
+            o.ctx = ctx;
             o.grips.retain(|_, g| !matches!(g, Grip::Button { .. }));
-            o.in_car = in_car;
-            if in_car { o.aim_latched = false; }
+            o.mode = mode;
+            o.in_car = mode != FOOT;
+            if o.in_car { o.aim_latched = false; }
             o.apply();
             o.relabel();
         }

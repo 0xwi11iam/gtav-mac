@@ -13,6 +13,43 @@ pub static FOCUSED: AtomicBool = AtomicBool::new(true);
 
 pub static IN_VEHICLE: AtomicBool = AtomicBool::new(false);
 
+// what the player is in, set by the script tick: the touch controls switch layout on it
+pub const MODE_FOOT: u8 = 0;
+pub const MODE_CAR: u8 = 1;
+pub const MODE_BIKE: u8 = 2;
+pub const MODE_HELI: u8 = 3;
+pub const MODE_PLANE: u8 = 4;
+pub const MODE_BOAT: u8 = 5;
+pub const MODE_SUB: u8 = 6;
+pub const MODE_BICYCLE: u8 = 7;
+pub const MODE_PASSENGER: u8 = 8;
+pub static VEH_MODE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(MODE_FOOT);
+
+// what the vehicle can do right now: the touch controls only show the buttons that apply
+pub const CTX_TOWING: u32 = 1;
+pub const CTX_TRAILER: u32 = 2;
+pub const CTX_CARGOBOB: u32 = 4;
+pub const CTX_ROPE: u32 = 8;
+pub const CTX_CONVERTIBLE: u32 = 16;
+pub const CTX_VTOL: u32 = 32;
+pub static CONTEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+// game control actions the touch controls hold this frame, as (INPUT_* index, value)
+pub static INJECT: Mutex<Vec<(i32, f32)>> = Mutex::new(Vec::new());
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(not(target_os = "ios"), allow(dead_code))]
+pub enum Request {
+    DropTow,
+    DropTrailer,
+    Rope,
+}
+pub static REQUESTS: Mutex<Vec<Request>> = Mutex::new(Vec::new());
+#[cfg_attr(not(target_os = "ios"), allow(dead_code))]
+pub fn request(r: Request) {
+    REQUESTS.lock().unwrap().push(r);
+}
+
 static MENU: AtomicBool = AtomicBool::new(false);
 static SCRIPT_TICK: Mutex<Option<Instant>> = Mutex::new(None);
 pub fn script_tick(menu: bool) {

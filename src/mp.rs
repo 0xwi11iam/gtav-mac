@@ -14,6 +14,16 @@ use wasmtime::{Caller, Val};
 pub const COMMANDS: &[(&str, &str)] = &[
     ("PlayerPedId", "player_commands::CommandPlayerPedId()"),
     ("IsPauseMenuActive", "hud_commands::CommandIsPauseMenuActive()"),
+    ("SetControlValueNextFrame", "pad_commands::CommandSetControlValueNextFrame(int, int, float)"),
+    ("GetVehicleClass", "vehicle_commands::CommandGetVehicleClass(int)"),
+    ("DetachVehicleFromAnyTowTruck", "vehicle_commands::CommandDetachVehicleFromAnyTowTruck(int)"),
+    ("GetEntityAttachedToTowTruck", "vehicle_commands::CommandGetEntityAttachedToTowTruck(int)"),
+    ("IsVehicleAttachedToTrailer", "vehicle_commands::CommandIsVehicleAttachedToTrailer(int)"),
+    ("DetachVehicleFromTrailer", "vehicle_commands::CommandDetachVehicleFromTrailer(int)"),
+    ("IsVehicleAConvertible", "vehicle_commands::CommandIsVehicleAConvertible(int, bool)"),
+    ("DoesCargobobHavePickUpRope", "vehicle_commands::CommandDoesCargobobHavePickUpRope(int)"),
+    ("CreatePickUpRopeForCargobob", "vehicle_commands::CommandCreatePickUpRopeForCargobob(int, int)"),
+    ("RemovePickUpRopeForCargobob", "vehicle_commands::CommandRemovePickUpRopeForCargobob(int)"),
     ("GetEntityCoords", "entity_commands::CommandGetEntityCoords(int, bool)"),
     ("GetEntityHeading", "entity_commands::CommandGetEntityHeading(int)"),
     ("GetEntityVelocity", "entity_commands::CommandGetEntityVelocity(int)"),
@@ -908,6 +918,14 @@ pub fn script_tick(caller: &mut Caller<'_, HostState>, thread: u64, tls: u64) ->
             let in_car = ped != 0 && c.exists(ped) && c.i("IsPedInAnyVehicle", &[i(ped), b(false)]) != 0;
             crate::pad::IN_VEHICLE.store(in_car, Ordering::Relaxed);
             crate::pad::script_tick(c.i("IsPauseMenuActive", &[]) != 0);
+            vehicle_mode(&mut c, ped, in_car);
+            for (control, value) in crate::pad::INJECT.lock().unwrap().iter() {
+                c.i("SetControlValueNextFrame", &[i(0), i(*control), f(*value)]);
+            }
+            let requests = std::mem::take(&mut *crate::pad::REQUESTS.lock().unwrap());
+            for r in requests {
+                handle_request(&mut c, ped, r);
+            }
 
             static HORN_AT: Mutex<Option<Instant>> = Mutex::new(None);
             let mut horn_at = HORN_AT.lock().unwrap();
@@ -1055,6 +1073,72 @@ fn weapon_name(hash: u32) -> Option<&'static str> {
     ];
     NAMES.iter().find(|(n, _)| proto::joaat(n) == hash).map(|(_, s)| *s)
 }
+
+fn vehicle_mode(c: &mut Cmd, ped: i32, in_car: bool) {
+    use crate::pad::*;
+    let veh = if in_car { c.i("GetVehiclePedIsIn", &[i(ped), b(false)]) } else { 0 };
+    let model = if veh != 0 { c.i("GetEntityModel", &[i(veh)]) as u32 } else { 0 };
+    let is = |names: &[&str]| names.iter().any(|n| proto::joaat(n) == model);
+    let mode = if veh == 0 {
+        MODE_FOOT
+    } else if c.i("GetPedInVehicleSeat", &[i(veh), i(-1), b(false)]) != ped {
+        MODE_PASSENGER
+    } else if is(&["submersible", "submersible2"]) {
+        MODE_SUB
+    } else {
+        match c.i("GetVehicleClass", &[i(veh)]) {
+            8 => MODE_BIKE,
+            13 => MODE_BICYCLE,
+            14 => MODE_BOAT,
+            15 => MODE_HELI,
+            16 => MODE_PLANE,
+            _ => MODE_CAR,
+        }
+    };
+    let mut ctx = 0;
+    if veh != 0 {
+        if is(&["towtruck", "towtruck2"]) && c.i("GetEntityAttachedToTowTruck", &[i(veh)]) != 0 { ctx |= CTX_TOWING; }
+        if c.i("IsVehicleAttachedToTrailer", &[i(veh)]) != 0 { ctx |= CTX_TRAILER; }
+        if is(&["cargobob", "cargobob2", "cargobob3"]) {
+            ctx |= CTX_CARGOBOB;
+            if c.i("DoesCargobobHavePickUpRope", &[i(veh)]) != 0 { ctx |= CTX_ROPE; }
+        }
+        if c.i("IsVehicleAConvertible", &[i(veh), b(false)]) != 0 { ctx |= CTX_CONVERTIBLE; }
+        if is(&["hydra"]) { ctx |= CTX_VTOL; }
+    }
+    CONTEXT.store(ctx, Ordering::Relaxed);
+    if VEH_MODE.swap(mode, Ordering::Relaxed) != mode {
+        eprintln!("[touch] vehicle mode {mode}");
+    }
+}
+
+fn handle_request(c: &mut Cmd, ped: i32, r: crate::pad::Request) {
+    use crate::pad::Request;
+    eprintln!("[touch] {r:?}");
+    let veh = if ped != 0 && c.i("IsPedInAnyVehicle", &[i(ped), b(false)]) != 0 { c.i("GetVehiclePedIsIn", &[i(ped), b(false)]) } else { 0 };
+    match r {
+        Request::DropTow => {
+            if veh != 0 {
+                let towed = c.i("GetEntityAttachedToTowTruck", &[i(veh)]);
+                eprintln!("[touch] tow truck {veh} is towing {towed}");
+                if towed != 0 { c.i("DetachVehicleFromAnyTowTruck", &[i(towed)]); }
+            }
+        }
+        Request::DropTrailer => if veh != 0 { c.i("DetachVehicleFromTrailer", &[i(veh)]); },
+        Request::Rope => {
+            if veh != 0 {
+                if c.i("DoesCargobobHavePickUpRope", &[i(veh)]) != 0 {
+                    c.i("RemovePickUpRopeForCargobob", &[i(veh)]);
+                } else {
+                    c.i("CreatePickUpRopeForCargobob", &[i(veh), i(0)]);
+                }
+            }
+        }
+    }
+}
+
+
+
 
 fn more_bullets(c: &mut Cmd) {
     const ALL: &[&str] = &[

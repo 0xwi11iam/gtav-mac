@@ -89,7 +89,6 @@ const VEH_ACCELERATE: i32 = 71;
 const VEH_BRAKE: i32 = 72;
 const VEH_DUCK: i32 = 73;
 const VEH_HEADLIGHT: i32 = 74;
-const VEH_EXIT: i32 = 75;
 const VEH_HANDBRAKE: i32 = 76;
 const VEH_LOOK_BEHIND: i32 = 79;
 const VEH_FLY_THROTTLE_UP: i32 = 87;
@@ -134,7 +133,7 @@ const BUTTONS: &[Spec] = &[
     b(BottomRight(62.0, 68.0), 40.0, [Some(("FIRE", Mouse(1))), GAS, GAS, on("UP", VEH_FLY_THROTTLE_UP), on("THRUST", VEH_FLY_THROTTLE_UP), GAS, on("GAS", VEH_SUB_THROTTLE_UP), on("PEDAL", VEH_PUSHBIKE_PEDAL), on("SHOOT", VEH_PASSENGER_ATTACK)]),
     b(BottomRight(158.0, 46.0), 31.0, [Some(("AIM", AimToggle)), BRAKE, BRAKE, on("DOWN", VEH_FLY_THROTTLE_DOWN), on("SLOW", VEH_FLY_THROTTLE_DOWN), on("REVERSE", VEH_BRAKE), on("REVERSE", VEH_SUB_THROTTLE_DOWN), on("BRAKE", VEH_PUSHBIKE_FRONT_BRAKE), on("AIM", VEH_PASSENGER_AIM)]),
     b(BottomRight(58.0, 168.0), 28.0, [Some(("JUMP", Key("Space"))), HBRAKE, HBRAKE, YAW_L, YAW_L, None, on("RISE", VEH_SUB_ASCEND), on("HOP", VEH_HANDBRAKE), None]),
-    all(BottomRight(140.0, 132.0), 26.0, "EXIT", Ctrl(VEH_EXIT, 1.0)).foot(Some(("ENTER", Key("KeyF")))),
+    all(BottomRight(140.0, 132.0), 26.0, "EXIT", Key("KeyF")).foot(Some(("ENTER", Key("KeyF")))),
     b(BottomRight(222.0, 98.0), 24.0, [Some(("RELOAD", Key("KeyR"))), HORN, HORN, YAW_R, YAW_R, HORN, on("DIVE", VEH_SUB_DESCEND), on("SPRINT", VEH_PUSHBIKE_SPRINT), None]),
     b(BottomRight(140.0, 200.0), 24.0, [None, SHOOT, SHOOT, AIR_SHOOT, AIR_SHOOT, None, None, None, None]),
     b(BottomRight(222.0, 160.0), 24.0, [None, DUCK, DUCK, None, on("GEAR", VEH_FLY_UNDERCARRIAGE), None, None, None, DUCK]),

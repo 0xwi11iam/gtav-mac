@@ -373,6 +373,32 @@ pub fn time_warp(dir: i64) -> i64 {
 
 static WANT_ENTER: AtomicBool = AtomicBool::new(false);
 static WANT_BULLETS: AtomicBool = AtomicBool::new(false);
+
+static TXD: Mutex<(String, Option<HashMap<String, (Instant, bool)>>)> = Mutex::new((String::new(), None));
+const TXD_PATIENCE: Duration = Duration::from_secs(3);
+
+// called with (name, 0) when a script asks whether a texture dictionary is loaded, then with (0, answer + 1).
+// one that has been missing for a while is reported as loaded, since a script would otherwise wait on it forever
+pub fn txd_loaded(name: u64, answer: i64) -> i64 {
+    let mut t = TXD.lock().unwrap();
+    if answer == 0 {
+        t.0 = read_cstr(&crate::RT.get().unwrap().mem, name);
+        return 0;
+    }
+    let (name, waiting) = &mut *t;
+    let waiting = waiting.get_or_insert_with(HashMap::new);
+    if answer > 1 {
+        waiting.remove(name.as_str());
+        return answer - 1;
+    }
+    let w = waiting.entry(name.clone()).or_insert((Instant::now(), false));
+    if w.0.elapsed() < TXD_PATIENCE { return 0; }
+    if !w.1 {
+        w.1 = true;
+        eprintln!("[host] texture dictionary {name:?} never loads, telling scripts it has");
+    }
+    1
+}
 static TYPED: Mutex<String> = Mutex::new(String::new());
 
 pub fn key_pressed(code: &str) {

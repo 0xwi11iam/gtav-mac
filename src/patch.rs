@@ -15,6 +15,8 @@ enum Arg {
     Local1Replaced,
 
     MissingText,
+
+    TxdLoaded,
 }
 
 const HOOKS: &[(&str, &str, &[Arg])] = &[
@@ -22,15 +24,17 @@ const HOOKS: &[(&str, &str, &[Arg])] = &[
     ("muguet_explosion", "CExplosionManager::AddExplosion(CExplosionManager::CExplosionArgs&, CProjectile*, bool)", &[Arg::Local0]),
     ("muguet_timewarp", "CTimeWarper::SetTargetTimeWarp(TW_Dir)", &[Arg::Local1Replaced]),
     ("muguet_text", "CTextFile::GetInternal(unsigned int)", &[Arg::MissingText]),
+    // a texture dictionary the data does not have never loads, and scripts wait on it forever: the host sees every check and its answer
+    ("muguet_txd", "graphics_commands::HasStreamedTxdLoaded(char const*)", &[Arg::TxdLoaded, Arg::TxdLoaded]),
 ];
 
 const SCENARIO_CHECK: &str = "CScenarioManager::PerformCollisionChecksForScenarioPoint(CScenarioManager::CollisionCheckParams const&)";
 const MOVIE_PRELOAD: &str = "CMovieMgr::PreloadMovie(char const*, bool)";
 
-pub const VERSION: u32 = 6;
+pub const VERSION: u32 = 7;
 
 fn returns(args: &[Arg]) -> bool {
-    args.contains(&Arg::Local1Replaced) || args.contains(&Arg::MissingText)
+    args.contains(&Arg::Local1Replaced) || args.contains(&Arg::MissingText) || args.contains(&Arg::TxdLoaded)
 }
 
 struct Patcher {
@@ -122,13 +126,30 @@ impl Reencode for Patcher {
                 f.instruction(&I::LocalGet(0)).instruction(&I::I64ExtendI32U).instruction(&call).instruction(&I::Return);
                 f.instruction(&I::End);
             }
+        } else if HOOKS[hook].2.first() == Some(&Arg::TxdLoaded) {
+            // the name goes in first, then the answer in local 2 is passed through the host just before it is returned
+            f.instruction(&I::LocalGet(0)).instruction(&I::I64Const(0)).instruction(&call).instruction(&I::Drop);
+            let mut reader = func.get_operators_reader()?;
+            let mut last = None;
+            while !reader.eof() {
+                let i = self.parse_instruction(&mut reader)?;
+                if let (I::Return, Some(I::LocalGet(2))) = (&i, &last) {
+                    f.instruction(&I::Drop);
+                    f.instruction(&I::I64Const(0)).instruction(&I::LocalGet(2)).instruction(&I::I64ExtendI32U).instruction(&I::I64Const(1)).instruction(&I::I64Add);
+                    f.instruction(&call).instruction(&I::I32WrapI64);
+                }
+                f.instruction(&i);
+                last = Some(i);
+            }
+            code.function(&f);
+            return Ok(());
         } else {
             for arg in HOOKS[hook].2 {
                 match arg {
                     Arg::Local0 => f.instruction(&I::LocalGet(0)),
                     Arg::TlsBase => f.instruction(&I::GlobalGet(self.tls_global)),
                     Arg::Local1Replaced => f.instruction(&I::LocalGet(1)).instruction(&I::I64ExtendI32U),
-                    Arg::MissingText => unreachable!(),
+                    Arg::MissingText | Arg::TxdLoaded => unreachable!(),
                 };
             }
             f.instruction(&call);

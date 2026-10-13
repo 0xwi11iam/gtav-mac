@@ -17,6 +17,9 @@ enum Arg {
     MissingText,
 
     TxdLoaded,
+
+    // replace the whole body: pass (i64, i64, i32, i64, i32, i32) on and return the host's i32 result
+    OpusFrame,
 }
 
 const HOOKS: &[(&str, &str, &[Arg])] = &[
@@ -25,15 +28,16 @@ const HOOKS: &[(&str, &str, &[Arg])] = &[
     ("muguet_timewarp", "CTimeWarper::SetTargetTimeWarp(TW_Dir)", &[Arg::Local1Replaced]),
     ("muguet_text", "CTextFile::GetInternal(unsigned int)", &[Arg::MissingText]),
     ("muguet_txd", "graphics_commands::HasStreamedTxdLoaded(char const*)", &[Arg::TxdLoaded, Arg::TxdLoaded]),
+    ("muguet_opus_frame", "opus_decode_frame", &[Arg::OpusFrame; 6]),
 ];
 
 const SCENARIO_CHECK: &str = "CScenarioManager::PerformCollisionChecksForScenarioPoint(CScenarioManager::CollisionCheckParams const&)";
 const MOVIE_PRELOAD: &str = "CMovieMgr::PreloadMovie(char const*, bool)";
 
-pub const VERSION: u32 = 7;
+pub const VERSION: u32 = 8;
 
 fn returns(args: &[Arg]) -> bool {
-    args.contains(&Arg::Local1Replaced) || args.contains(&Arg::MissingText) || args.contains(&Arg::TxdLoaded)
+    args.contains(&Arg::Local1Replaced) || args.contains(&Arg::MissingText) || args.contains(&Arg::TxdLoaded) || args.contains(&Arg::OpusFrame)
 }
 
 struct Patcher {
@@ -117,7 +121,14 @@ impl Reencode for Patcher {
         let mut f = self.new_function_with_parsed_locals(&func)?;
         use wasm_encoder::Instruction as I;
         let call = I::Call(self.imported_funcs + hook as u32);
-        if HOOKS[hook].2 == [Arg::MissingText] {
+        if HOOKS[hook].2.contains(&Arg::OpusFrame) {
+            // native decoding (opus.rs); the original body stays behind the return
+            for (k, wide) in [true, true, false, true, false, false].into_iter().enumerate() {
+                f.instruction(&I::LocalGet(k as u32));
+                if !wide { f.instruction(&I::I64ExtendI32S); }
+            }
+            f.instruction(&call).instruction(&I::I32WrapI64).instruction(&I::Return);
+        } else if HOOKS[hook].2 == [Arg::MissingText] {
             // only call out for the listed hashes: text lookups are hot
             for (label, _) in crate::host::MISSING_TEXT {
                 f.instruction(&I::LocalGet(0)).instruction(&I::I32Const(crate::proto::joaat(label) as i32)).instruction(&I::I32Eq);
@@ -147,7 +158,7 @@ impl Reencode for Patcher {
                     Arg::Local0 => f.instruction(&I::LocalGet(0)),
                     Arg::TlsBase => f.instruction(&I::GlobalGet(self.tls_global)),
                     Arg::Local1Replaced => f.instruction(&I::LocalGet(1)).instruction(&I::I64ExtendI32U),
-                    Arg::MissingText | Arg::TxdLoaded => unreachable!(),
+                    Arg::MissingText | Arg::TxdLoaded | Arg::OpusFrame => unreachable!(),
                 };
             }
             f.instruction(&call);

@@ -124,6 +124,12 @@ pub fn call(mut caller: Caller<'_, HostState>, idx: usize, params: &[Val], resul
         "muguet_explosion" => crate::mp::explosion(int(params, 0) as u64),
         "muguet_timewarp" => set_int(results, crate::mp::time_warp(int(params, 0))),
         "muguet_txd" => set_int(results, crate::mp::txd_loaded(int(params, 0) as u64, int(params, 1))),
+        "muguet_opus_frame" => {
+            let (base, len) = crate::mem_base_len(mem);
+            let heap = unsafe { std::slice::from_raw_parts_mut(base, len) };
+            let p = |i| int(params, i);
+            set_int(results, crate::opus::decode_frame(heap, p(0) as u64, p(1) as u64, p(2) as i32, p(3) as u64, p(4) as i32, p(5) as i32))
+        }
         "muguet_text" => set_int(results, missing_text(&mut caller, int(params, 0) as u32)? as i64),
         "__pthread_create_js" => {
             let r = spawn_pthread(int(params, 0) as u64, int(params, 2) as u64, int(params, 3) as u64);

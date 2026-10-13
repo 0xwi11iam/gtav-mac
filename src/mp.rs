@@ -13,6 +13,7 @@ use wasmtime::{Caller, Val};
 #[cfg_attr(not(feature = "jit"), allow(dead_code))]
 pub const COMMANDS: &[(&str, &str)] = &[
     ("PlayerPedId", "player_commands::CommandPlayerPedId()"),
+    ("IsPauseMenuActive", "hud_commands::CommandIsPauseMenuActive()"),
     ("GetEntityCoords", "entity_commands::CommandGetEntityCoords(int, bool)"),
     ("GetEntityHeading", "entity_commands::CommandGetEntityHeading(int)"),
     ("GetEntityVelocity", "entity_commands::CommandGetEntityVelocity(int)"),
@@ -908,6 +909,7 @@ pub fn script_tick(caller: &mut Caller<'_, HostState>, thread: u64, tls: u64) ->
             let ped = c.i("PlayerPedId", &[]);
             let in_car = ped != 0 && c.exists(ped) && c.i("IsPedInAnyVehicle", &[i(ped), b(false)]) != 0;
             crate::pad::IN_VEHICLE.store(in_car, Ordering::Relaxed);
+            crate::pad::script_tick(c.i("IsPauseMenuActive", &[]) != 0);
 
             static HORN_AT: Mutex<Option<Instant>> = Mutex::new(None);
             let mut horn_at = HORN_AT.lock().unwrap();

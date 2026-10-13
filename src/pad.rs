@@ -13,6 +13,18 @@ pub static FOCUSED: AtomicBool = AtomicBool::new(true);
 
 pub static IN_VEHICLE: AtomicBool = AtomicBool::new(false);
 
+static MENU: AtomicBool = AtomicBool::new(false);
+static SCRIPT_TICK: Mutex<Option<Instant>> = Mutex::new(None);
+pub fn script_tick(menu: bool) {
+    MENU.store(menu, Ordering::Relaxed);
+    *SCRIPT_TICK.lock().unwrap() = Some(Instant::now());
+}
+// scripts stop ticking while the game is paused, so a stale tick counts as a menu too
+#[cfg_attr(not(target_os = "ios"), allow(dead_code))]
+pub fn in_menu() -> bool {
+    MENU.load(Ordering::Relaxed) || SCRIPT_TICK.lock().unwrap().is_some_and(|t| t.elapsed() > Duration::from_millis(500))
+}
+
 pub static HORN_PAD: AtomicBool = AtomicBool::new(false);
 pub static HORN_TOUCH: AtomicBool = AtomicBool::new(false);
 pub fn horn_held() -> bool {

@@ -93,6 +93,9 @@ struct Fmt {
 
 static BC_SOFT: AtomicBool = AtomicBool::new(false);
 static F32_HALF: AtomicBool = AtomicBool::new(false);
+// MUGUET_MEM_STATS=1 adds the slow stats to the fps log (resident heap, malloc, live wgpu objects):
+// mincore over the whole heap, the malloc locks and the wgpu report cost ~100 ms per log on an iPad
+static MEM_STATS: LazyLock<bool> = LazyLock::new(|| std::env::var("MUGUET_MEM_STATS").is_ok_and(|v| v != "0"));
 static RE_VAR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"@binding\((\d+)u?\)\s*var(?:<[^>]*>)?\s+(\w+)").unwrap());
 static RE_IDENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\w+").unwrap());
 
@@ -3339,12 +3342,15 @@ impl Gpu {
         let dt = now.duration_since(self.fps_t0).as_secs_f64();
         if dt >= 10.0 {
             let frames = self.presents - self.fps_n0;
+            let resident = if *MEM_STATS { format!(" ({} MB resident)", crate::heap_resident_mb()) } else { String::new() };
+            let malloc = if *MEM_STATS { format!(", malloc {} MB", crate::malloc_mb()) } else { String::new() };
             log(&format!(
-                "fps: {:.1} ({} MB memory, game heap {} MB ({} MB resident), gpu {} MB, compressed {} MB, malloc {} MB, {} frames, {} clears folded, {} draws/frame, {} draws waiting for a compiling pipeline, {:.1} submits/frame, {:.1} passes/frame, {} skipped total, pipelines {}, bind groups cached {}, validation errors {})",
-                frames as f64 / dt, crate::footprint_mb(), crate::RT.get().map(|r| r.mem.data_size() >> 20).unwrap_or(0), crate::heap_resident_mb(), crate::gpu_allocated_mb(), crate::compressed_mb(), crate::malloc_mb(), frames, self.clears_folded, (self.draws - self.fps_d0) / frames.max(1), self.pending_skips - self.pending_skips0, (self.submits - self.submits0) as f64 / frames.max(1) as f64,
+                "fps: {:.1} ({} MB memory, game heap {} MB{resident}, gpu {} MB, compressed {} MB{malloc}, {} frames, {} clears folded, {} draws/frame, {} draws waiting for a compiling pipeline, {:.1} submits/frame, {:.1} passes/frame, {} skipped total, pipelines {}, bind groups cached {}, validation errors {})",
+                frames as f64 / dt, crate::footprint_mb(), crate::RT.get().map(|r| r.mem.data_size() >> 20).unwrap_or(0), crate::gpu_allocated_mb(), crate::compressed_mb(), frames, self.clears_folded, (self.draws - self.fps_d0) / frames.max(1), self.pending_skips - self.pending_skips0, (self.submits - self.submits0) as f64 / frames.max(1) as f64,
                 (self.passes - self.passes0) as f64 / frames.max(1) as f64, self.skipped, self.pipe_creates, self.bind_groups.len(), self.errors.load(Ordering::Relaxed)
             ));
-            if let Some(r) = self.instance.generate_report() {
+            let report = if *MEM_STATS { self.instance.generate_report() } else { None };
+            if let Some(r) = report {
                 let h = &r.hub;
                 log(&format!("live wgpu objects: buffers {} textures {} views {} bind groups {} samplers {} pipelines {} | engine objects {} (slots {})",
                     h.buffers.num_kept_from_user, h.textures.num_kept_from_user, h.texture_views.num_kept_from_user,

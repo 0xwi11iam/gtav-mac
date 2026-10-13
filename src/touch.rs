@@ -74,6 +74,12 @@ const fn when(need: u32, anchor: Anchor, label: &'static str, act: Act) -> Spec 
     let slot = Some((label, act));
     Spec { anchor, radius: 24.0, acts: [None, slot, slot, slot, slot, slot, slot, slot, None], need, unless: 0, nav: false }
 }
+// on foot only, depending on what the player holds
+const fn held(need: u32, unless: u32, anchor: Anchor, radius: f64, label: &'static str, act: Act) -> Spec {
+    let mut acts = [None; MODES];
+    acts[FOOT] = Some((label, act));
+    Spec { anchor, radius, acts, need, unless, nav: false }
+}
 const fn n(x: f64, label: &'static str, key: &'static str) -> Spec {
     Spec { anchor: Anchor::Nav(x, 0.0), radius: 21.0, acts: [Some((label, Act::Key(key))); MODES], need: 0, unless: 0, nav: true }
 }
@@ -113,7 +119,7 @@ const VEH_PUSHBIKE_PEDAL: i32 = 136;
 const VEH_PUSHBIKE_SPRINT: i32 = 137;
 const VEH_PUSHBIKE_FRONT_BRAKE: i32 = 138;
 
-use crate::pad::{CTX_CARGOBOB, CTX_CONVERTIBLE, CTX_ROPE, CTX_TOWING, CTX_TRAILER, CTX_VTOL};
+use crate::pad::{CTX_CARGOBOB, CTX_CONVERTIBLE, CTX_GUN, CTX_MELEE, CTX_ROPE, CTX_THROWN, CTX_TOWING, CTX_TRAILER, CTX_VTOL};
 use crate::pad::Request as R;
 use Act::*;
 use Anchor::*;
@@ -130,11 +136,17 @@ const YAW_L: Slot = on("YAW\nLEFT", VEH_FLY_YAW_LEFT);
 const YAW_R: Slot = on("YAW\nRIGHT", VEH_FLY_YAW_RIGHT);
 const BUTTONS: &[Spec] = &[
     //                                          foot                       car     bike    heli                                plane                                 boat                    sub                                    bicycle                                    passenger
-    b(BottomRight(62.0, 68.0), 40.0, [Some(("FIRE", Mouse(1))), GAS, GAS, on("UP", VEH_FLY_THROTTLE_UP), on("THRUST", VEH_FLY_THROTTLE_UP), GAS, on("GAS", VEH_SUB_THROTTLE_UP), on("PEDAL", VEH_PUSHBIKE_PEDAL), on("SHOOT", VEH_PASSENGER_ATTACK)]),
+    // on foot it follows what the player holds
+    held(0, CTX_GUN | CTX_MELEE | CTX_THROWN, BottomRight(62.0, 68.0), 40.0, "PUNCH", Mouse(1)),
+    held(CTX_GUN, 0, BottomRight(62.0, 68.0), 40.0, "FIRE", Mouse(1)),
+    held(CTX_MELEE, 0, BottomRight(62.0, 68.0), 40.0, "ATTACK", Mouse(1)),
+    held(CTX_THROWN, 0, BottomRight(62.0, 68.0), 40.0, "THROW", Mouse(1)),
+    held(CTX_GUN, 0, BottomRight(222.0, 98.0), 24.0, "RELOAD", Key("KeyR")),
+    b(BottomRight(62.0, 68.0), 40.0, [None, GAS, GAS, on("UP", VEH_FLY_THROTTLE_UP), on("THRUST", VEH_FLY_THROTTLE_UP), GAS, on("GAS", VEH_SUB_THROTTLE_UP), on("PEDAL", VEH_PUSHBIKE_PEDAL), on("SHOOT", VEH_PASSENGER_ATTACK)]),
     b(BottomRight(158.0, 46.0), 31.0, [Some(("AIM", AimToggle)), BRAKE, BRAKE, on("DOWN", VEH_FLY_THROTTLE_DOWN), on("SLOW", VEH_FLY_THROTTLE_DOWN), on("REVERSE", VEH_BRAKE), on("REVERSE", VEH_SUB_THROTTLE_DOWN), on("BRAKE", VEH_PUSHBIKE_FRONT_BRAKE), on("AIM", VEH_PASSENGER_AIM)]),
     b(BottomRight(58.0, 168.0), 28.0, [Some(("JUMP", Key("Space"))), HBRAKE, HBRAKE, YAW_L, YAW_L, None, on("RISE", VEH_SUB_ASCEND), on("HOP", VEH_HANDBRAKE), None]),
     all(BottomRight(140.0, 132.0), 26.0, "EXIT", Key("KeyF")).foot(Some(("ENTER", Key("KeyF")))),
-    b(BottomRight(222.0, 98.0), 24.0, [Some(("RELOAD", Key("KeyR"))), HORN, HORN, YAW_R, YAW_R, HORN, on("DIVE", VEH_SUB_DESCEND), on("SPRINT", VEH_PUSHBIKE_SPRINT), None]),
+    b(BottomRight(222.0, 98.0), 24.0, [None, HORN, HORN, YAW_R, YAW_R, HORN, on("DIVE", VEH_SUB_DESCEND), on("SPRINT", VEH_PUSHBIKE_SPRINT), None]),
     b(BottomRight(140.0, 200.0), 24.0, [None, SHOOT, SHOOT, AIR_SHOOT, AIR_SHOOT, None, None, None, None]),
     b(BottomRight(222.0, 160.0), 24.0, [None, DUCK, DUCK, None, on("GEAR", VEH_FLY_UNDERCARRIAGE), None, None, None, DUCK]),
     // only while it applies

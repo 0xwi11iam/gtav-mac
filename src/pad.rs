@@ -32,6 +32,9 @@ pub const CTX_CARGOBOB: u32 = 4;
 pub const CTX_ROPE: u32 = 8;
 pub const CTX_CONVERTIBLE: u32 = 16;
 pub const CTX_VTOL: u32 = 32;
+pub const CTX_GUN: u32 = 64;
+pub const CTX_MELEE: u32 = 128;
+pub const CTX_THROWN: u32 = 256;
 pub static CONTEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
 // game control actions the touch controls hold this frame, as (INPUT_* index, value)

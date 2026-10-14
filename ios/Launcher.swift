@@ -370,13 +370,13 @@ struct LauncherView: View {
                 }
             }
             .frame(maxWidth: .infinity)
+            .fileImporter(isPresented: $pickingSave, allowedContentTypes: [.item]) { result in
+                if case .success(let url) = result { save.importSave(url) }
+            }
         }
         .preferredColorScheme(.dark)
         .fileImporter(isPresented: $picking, allowedContentTypes: [.zip]) { result in
             if case .success(let url) = result { importer.run(url) }
-        }
-        .fileImporter(isPresented: $pickingSave, allowedContentTypes: [.item]) { result in
-            if case .success(let url) = result { save.importSave(url) }
         }
         .onAppear { importer.scan() }
         .onChange(of: phase) { p in if p == .active { importer.scan() } }

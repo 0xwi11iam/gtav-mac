@@ -61,7 +61,7 @@ One player hosts from the launcher (or runs `muguet-server` on any machine), the
 
 ## Credits
 - [divyanshugarg36](https://github.com/divyanshugarg36) for lots of iOS fixes and improvements
-- [c0rmac](https://github.com/c0rmac) for fixing a heap corruption and a gpu memory leak, faster rendering, astc textures and native opus audio
+- [c0rmac](https://github.com/c0rmac) for fixing a heap corruption and a gpu memory leak, faster rendering, astc textures, native opus audio, gamepad flight controls and graphics presets on mac
 - [Kagander](https://github.com/Kagander) for fixing the minimap
 - [inj-src](https://github.com/inj-src) for decoding bc textures on all cores
 - [Dbhardwaj99](https://github.com/Dbhardwaj99) for reporting real free disk space

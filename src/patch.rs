@@ -17,6 +17,9 @@ enum Arg {
     MissingText,
 
     TxdLoaded,
+
+    // pass the pool's size to the host before it grows, and fail the growth when the host says no
+    PoolGrow,
 }
 
 const HOOKS: &[(&str, &str, &[Arg])] = &[
@@ -25,15 +28,16 @@ const HOOKS: &[(&str, &str, &[Arg])] = &[
     ("muguet_timewarp", "CTimeWarper::SetTargetTimeWarp(TW_Dir)", &[Arg::Local1Replaced]),
     ("muguet_text", "CTextFile::GetInternal(unsigned int)", &[Arg::MissingText]),
     ("muguet_txd", "graphics_commands::HasStreamedTxdLoaded(char const*)", &[Arg::TxdLoaded, Arg::TxdLoaded]),
+    ("muguet_pool", "rage::sysMemGrowBuddyAllocator::GrowHeap()", &[Arg::PoolGrow]),
 ];
 
 const SCENARIO_CHECK: &str = "CScenarioManager::PerformCollisionChecksForScenarioPoint(CScenarioManager::CollisionCheckParams const&)";
 const MOVIE_PRELOAD: &str = "CMovieMgr::PreloadMovie(char const*, bool)";
 
-pub const VERSION: u32 = 7;
+pub const VERSION: u32 = 8;
 
 fn returns(args: &[Arg]) -> bool {
-    args.contains(&Arg::Local1Replaced) || args.contains(&Arg::MissingText) || args.contains(&Arg::TxdLoaded)
+    args.contains(&Arg::Local1Replaced) || args.contains(&Arg::MissingText) || args.contains(&Arg::TxdLoaded) || args.contains(&Arg::PoolGrow)
 }
 
 struct Patcher {
@@ -44,6 +48,7 @@ struct Patcher {
     targets: HashMap<u32, usize>,
     scenario_check: Option<u32>,
     movie_preload: Option<u32>,
+    pool_size: Option<u32>,
     exports: Vec<(String, u32)>,
     next_func: u32,
 }
@@ -117,7 +122,13 @@ impl Reencode for Patcher {
         let mut f = self.new_function_with_parsed_locals(&func)?;
         use wasm_encoder::Instruction as I;
         let call = I::Call(self.imported_funcs + hook as u32);
-        if HOOKS[hook].2 == [Arg::MissingText] {
+        if HOOKS[hook].2 == [Arg::PoolGrow] {
+            let Some(size) = self.pool_size else { return Err(Error::UserError(anyhow::anyhow!("GetHeapSize not found"))) };
+            f.instruction(&I::LocalGet(0)).instruction(&I::Call(size + self.shift())).instruction(&call).instruction(&I::I64Eqz);
+            f.instruction(&I::If(wasm_encoder::BlockType::Empty));
+            f.instruction(&I::I32Const(-1)).instruction(&I::Return);
+            f.instruction(&I::End);
+        } else if HOOKS[hook].2 == [Arg::MissingText] {
             // only call out for the listed hashes: text lookups are hot
             for (label, _) in crate::host::MISSING_TEXT {
                 f.instruction(&I::LocalGet(0)).instruction(&I::I32Const(crate::proto::joaat(label) as i32)).instruction(&I::I32Eq);
@@ -147,7 +158,7 @@ impl Reencode for Patcher {
                     Arg::Local0 => f.instruction(&I::LocalGet(0)),
                     Arg::TlsBase => f.instruction(&I::GlobalGet(self.tls_global)),
                     Arg::Local1Replaced => f.instruction(&I::LocalGet(1)).instruction(&I::I64ExtendI32U),
-                    Arg::MissingText | Arg::TxdLoaded => unreachable!(),
+                    Arg::MissingText | Arg::TxdLoaded | Arg::PoolGrow => unreachable!(),
                 };
             }
             f.instruction(&call);
@@ -234,6 +245,7 @@ pub fn patch(wasm: &[u8], wanted: &[(&str, &str)]) -> Result<Vec<u8>> {
         targets,
         scenario_check: by_name.get(SCENARIO_CHECK).copied(),
         movie_preload: by_name.get(MOVIE_PRELOAD).copied(),
+        pool_size: by_name.get("rage::sysMemGrowBuddyAllocator::GetHeapSize() const").copied(),
         exports,
         next_func: imported_funcs,
     };

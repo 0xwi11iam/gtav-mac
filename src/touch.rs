@@ -314,6 +314,8 @@ fn label(parent: &AnyObject, r: f64) -> Retained<AnyObject> {
         let _: () = msg_send![&*l, setFrame: rect(2.0, 0.0, 2.0 * r - 4.0, 2.0 * r)];
         let _: () = msg_send![&*l, setUserInteractionEnabled: false];
         let _: () = msg_send![&*l, setTextColor: &*color(1.0, 0.9)];
+        let _: () = msg_send![&*l, setShadowColor: &*color(0.0, 0.85)];
+        let _: () = msg_send![&*l, setShadowOffset: CGSize { width: 0.0, height: 1.0 }];
         let font: Retained<AnyObject> = msg_send![class!(UIFont), boldSystemFontOfSize: (r * 0.42).clamp(9.0, 15.0)];
         let _: () = msg_send![&*l, setFont: &*font];
         let _: () = msg_send![&*l, setTextAlignment: 1isize];

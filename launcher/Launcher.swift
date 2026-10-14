@@ -98,9 +98,30 @@ final class Compiler: ObservableObject {
     }
 }
 
+enum Preset: String, CaseIterable {
+    case performance, balanced, quality, max, custom
+
+    var title: String { ["Performance", "Balanced", "Quality", "Max", "Custom"][Preset.allCases.firstIndex(of: self)!] }
+    var values: (scale: Double, textures: Int, fps: Int)? {
+        switch self {
+        case .performance: return (0.5, 0, 60)
+        case .balanced: return (0.75, 1, 60)
+        case .quality: return (1.0, 2, 60)
+        case .max: return (1.0, 2, 0)
+        case .custom: return nil
+        }
+    }
+    var summary: String {
+        guard let v = values else { return "" }
+        return "\(Int(v.scale * 100)) % resolution · \(["Normal", "High", "Very High"][v.textures]) textures · \(v.fps == 0 ? "uncapped" : "\(v.fps)") fps"
+    }
+}
+
 final class Settings: ObservableObject {
+    @Published var preset = Preset.balanced
     @Published var mode = 2
     @Published var scale = 0.5
+    @Published var textures = 0
     @Published var fullscreen = true
     @Published var fps = 60
     @Published var mouse = 2.0
@@ -115,8 +136,11 @@ final class Settings: ObservableObject {
         guard let data = try? Data(contentsOf: configURL),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
         extra = json
+        if let v = json["graphics_preset"] as? String, let p = Preset(rawValue: v) { preset = p }
+        else if json["texture_quality"] != nil || (json["scale"] as? Double).map({ $0 != 0.5 }) == true { preset = .custom }
         if let v = json["start_mode"] as? Int, (1...2).contains(v) { mode = v }
         if let v = json["scale"] as? Double { scale = v }
+        if let v = json["texture_quality"] as? Int, (0...2).contains(v) { textures = v }
         if let v = json["fullscreen"] as? Bool { fullscreen = v }
         if let v = json["fps_limit"] as? Int { fps = v }
         if let v = json["mouse_sensitivity"] as? Double { mouse = v }
@@ -129,8 +153,11 @@ final class Settings: ObservableObject {
 
     func save() throws {
         var json = extra
+        if let v = preset.values { (scale, textures, fps) = v }
+        json["graphics_preset"] = preset.rawValue
         json["start_mode"] = mode
         json["scale"] = scale
+        json["texture_quality"] = textures
         json["fullscreen"] = fullscreen
         json["fps_limit"] = fps
         json["mouse_sensitivity"] = (mouse * 10).rounded() / 10
@@ -203,15 +230,28 @@ struct LauncherView: View {
                     Text("Story Mode").tag(1)
                     Text("Sandbox").tag(2)
                 }
+                Picker("Graphics", selection: $s.preset) {
+                    ForEach(Preset.allCases, id: \.self) { p in Text(p.title).tag(p) }
+                }
+                if s.preset != .custom {
+                    Text(s.preset.summary).font(.caption).foregroundStyle(.secondary)
+                }
+                if s.preset == .custom {
                 Picker("Resolution", selection: $s.scale) {
                     Text("50 % (fastest)").tag(0.5)
                     Text("75 %").tag(0.75)
                     Text("100 % (sharpest)").tag(1.0)
                 }
+                Picker("Textures", selection: $s.textures) {
+                    Text("Normal").tag(0)
+                    Text("High").tag(1)
+                    Text("Very High").tag(2)
+                }
                 Picker("Frame limit", selection: $s.fps) {
                     Text("30 fps (cooler)").tag(30)
                     Text("60 fps").tag(60)
                     Text("Uncapped").tag(0)
+                }
                 }
                 HStack {
                     Text("Mouse sensitivity")

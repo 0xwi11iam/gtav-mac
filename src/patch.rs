@@ -20,6 +20,8 @@ enum Arg {
 
     // pass the pool's size to the host before it grows, and fail the growth when the host says no
     PoolGrow,
+    // the story characters' cash writes only: pass (value, tls base) and skip the write (reporting success) when the host says so
+    CashWrite,
 }
 
 const HOOKS: &[(&str, &str, &[Arg])] = &[
@@ -29,15 +31,16 @@ const HOOKS: &[(&str, &str, &[Arg])] = &[
     ("muguet_text", "CTextFile::GetInternal(unsigned int)", &[Arg::MissingText]),
     ("muguet_txd", "graphics_commands::HasStreamedTxdLoaded(char const*)", &[Arg::TxdLoaded, Arg::TxdLoaded]),
     ("muguet_pool", "rage::sysMemGrowBuddyAllocator::GrowHeap()", &[Arg::PoolGrow]),
+    ("muguet_cash", "stats_commands::CommandStatSetInt(int, int, bool)", &[Arg::CashWrite, Arg::CashWrite]),
 ];
 
 const SCENARIO_CHECK: &str = "CScenarioManager::PerformCollisionChecksForScenarioPoint(CScenarioManager::CollisionCheckParams const&)";
 const MOVIE_PRELOAD: &str = "CMovieMgr::PreloadMovie(char const*, bool)";
 
-pub const VERSION: u32 = 8;
+pub const VERSION: u32 = 9;
 
 fn returns(args: &[Arg]) -> bool {
-    args.contains(&Arg::Local1Replaced) || args.contains(&Arg::MissingText) || args.contains(&Arg::TxdLoaded) || args.contains(&Arg::PoolGrow)
+    args.contains(&Arg::Local1Replaced) || args.contains(&Arg::MissingText) || args.contains(&Arg::TxdLoaded) || args.contains(&Arg::PoolGrow) || args.contains(&Arg::CashWrite)
 }
 
 struct Patcher {
@@ -136,6 +139,15 @@ impl Reencode for Patcher {
                 f.instruction(&I::LocalGet(0)).instruction(&I::I64ExtendI32U).instruction(&call).instruction(&I::Return);
                 f.instruction(&I::End);
             }
+        } else if HOOKS[hook].2.first() == Some(&Arg::CashWrite) {
+            // stat writes are frequent: only call out for SP0/SP1/SP2_TOTAL_CASH
+            for k in 0..3 {
+                f.instruction(&I::LocalGet(0)).instruction(&I::I32Const(crate::proto::joaat(&format!("SP{k}_TOTAL_CASH")) as i32)).instruction(&I::I32Eq);
+                f.instruction(&I::If(wasm_encoder::BlockType::Empty));
+                f.instruction(&I::LocalGet(1)).instruction(&I::I64ExtendI32S).instruction(&I::GlobalGet(self.tls_global)).instruction(&call).instruction(&I::I64Eqz).instruction(&I::I32Eqz);
+                f.instruction(&I::If(wasm_encoder::BlockType::Empty)).instruction(&I::I32Const(1)).instruction(&I::Return).instruction(&I::End);
+                f.instruction(&I::End);
+            }
         } else if HOOKS[hook].2.first() == Some(&Arg::TxdLoaded) {
             f.instruction(&I::LocalGet(0)).instruction(&I::I64Const(0)).instruction(&call).instruction(&I::Drop);
             let mut reader = func.get_operators_reader()?;
@@ -158,7 +170,7 @@ impl Reencode for Patcher {
                     Arg::Local0 => f.instruction(&I::LocalGet(0)),
                     Arg::TlsBase => f.instruction(&I::GlobalGet(self.tls_global)),
                     Arg::Local1Replaced => f.instruction(&I::LocalGet(1)).instruction(&I::I64ExtendI32U),
-                    Arg::MissingText | Arg::TxdLoaded | Arg::PoolGrow => unreachable!(),
+                    Arg::MissingText | Arg::TxdLoaded | Arg::PoolGrow | Arg::CashWrite => unreachable!(),
                 };
             }
             f.instruction(&call);

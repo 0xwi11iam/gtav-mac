@@ -136,7 +136,7 @@ const BUTTONS: &[Spec] = &[
     b(BottomRight(58.0, 168.0), 28.0, [Some(("JUMP", Key("Space"))), HBRAKE, HBRAKE, YAW_L, YAW_L, None, on("RISE", VEH_SUB_ASCEND), on("HOP", VEH_HANDBRAKE), None]),
     all(BottomRight(140.0, 132.0), 26.0, "EXIT", Key("KeyF")).foot(Some(("ENTER", Key("KeyF")))),
     b(BottomRight(222.0, 98.0), 24.0, [None, HORN, HORN, YAW_R, YAW_R, HORN, on("DIVE", VEH_SUB_DESCEND), on("SPRINT", VEH_PUSHBIKE_SPRINT), None]),
-    b(BottomRight(140.0, 200.0), 24.0, [None, SHOOT, SHOOT, AIR_SHOOT, AIR_SHOOT, None, None, None, None]),
+    b(BottomRight(140.0, 200.0), 24.0, [Some(("ACTION", Key("KeyE"))), SHOOT, SHOOT, AIR_SHOOT, AIR_SHOOT, None, None, None, None]),
     b(BottomRight(222.0, 160.0), 24.0, [None, DUCK, DUCK, None, on("GEAR", VEH_FLY_UNDERCARRIAGE), None, None, None, DUCK]),
     when(CTX_TOWING, BottomRight(300.0, 70.0), "DROP\nCAR", Req(R::DropTow)),
     when(CTX_TRAILER, BottomRight(300.0, 70.0), "DROP\nTRAILER", Req(R::DropTrailer)),
@@ -368,6 +368,7 @@ fn symbol(label: &str) -> Option<&'static str> {
         "ROOF" => "sun.max.fill",
         "OK" => "checkmark",
         "BACK" => "arrow.uturn.left",
+        "ACTION" => "hand.point.up.left.fill",
         _ => return None,
     })
 }

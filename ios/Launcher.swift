@@ -35,11 +35,9 @@ public func muguetMemoryEntitled() -> Int32 { hasMemoryEntitlement().map { $0 ? 
 let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
 let configURL = documentsURL.appendingPathComponent("config.json")
 
-// The game reads saves from <Documents>/saves/userdata/... (see src/config.rs on iOS).
 let savesRoot = documentsURL.appendingPathComponent("saves")
 let defaultTitle = "GTA V"
 
-/// Slot number encoded in an SGTA5xxxx file name, or nil if it isn't one.
 func saveSlot(of name: String) -> Int? {
     guard name.hasPrefix("SGTA5") else { return nil }
     let digits = name.dropFirst(5)
@@ -52,7 +50,6 @@ final class SaveImporter: ObservableObject {
     @Published var status: String?
     @Published var statusIsError = false
 
-    // No path separators or reserved characters, and never "..".
     func validTitle(_ t: String) -> Bool {
         let trimmed = t.trimmingCharacters(in: .whitespacesAndNewlines)
         return !trimmed.isEmpty && !trimmed.contains("..") && trimmed.rangeOfCharacter(from: CharacterSet(charactersIn: "\\/:*?\"<>|")) == nil
@@ -78,14 +75,11 @@ final class SaveImporter: ObservableObject {
         var backup: URL?
         var installed = false
         do {
-            // The file the user picked lives outside our sandbox, so copy it in first.
             let staged = FileManager.default.temporaryDirectory.appendingPathComponent(name)
             defer { try? fm.removeItem(at: staged) }
             if fm.fileExists(atPath: staged.path) { try fm.removeItem(at: staged) }
             try fm.copyItem(at: source, to: staged)
             try fm.createDirectory(at: dir, withIntermediateDirectories: true)
-            // Keep whatever was in this slot before overwriting it. The backup goes
-            // outside /userdata so the game never sees it next to the real saves.
             if fm.fileExists(atPath: dest.path) {
                 let b = backupURL(for: dest, title: trimmedTitle)
                 try fm.copyItem(at: dest, to: b)
@@ -99,8 +93,6 @@ final class SaveImporter: ObservableObject {
                 + (backup == nil ? "" : " Previous save backed up.")
                 + (newerSlotNotice(in: dir, than: slot) ?? "")
         } catch {
-            // copyItem is not atomic, so a half-written file may be sitting at dest.
-            // Drop it and put the previous save back rather than leaving a corrupt one.
             if !installed {
                 try? fm.removeItem(at: dest)
                 if let b = backup { try? fm.copyItem(at: b, to: dest) }
@@ -109,7 +101,6 @@ final class SaveImporter: ObservableObject {
         }
     }
 
-    /// The game loads the newest slot, so say so when a later one will win.
     private func newerSlotNotice(in dir: URL, than slot: Int) -> String? {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
         guard let newest = names.compactMap({ saveSlot(of: $0) }).filter({ $0 > slot }).max() else { return nil }
@@ -123,15 +114,12 @@ final class SaveImporter: ObservableObject {
 
     private var trimmedTitle: String { title.trimmingCharacters(in: .whitespacesAndNewlines) }
 
-    /// A timestamped copy of the slot we are about to overwrite, kept outside the
-    /// directory the game scans so it can never be mistaken for a real save.
     private func backupURL(for dest: URL, title: String) -> URL {
         let dir = savesRoot.appendingPathComponent("save-backups").appendingPathComponent(title)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
         let name = "\(dest.lastPathComponent).\(stamp)"
         var url = dir.appendingPathComponent("\(name).bak")
-        // Two imports in the same second must not clobber each other's backup.
         if FileManager.default.fileExists(atPath: url.path) {
             url = dir.appendingPathComponent("\(name)-\(UUID().uuidString.prefix(4)).bak")
         }

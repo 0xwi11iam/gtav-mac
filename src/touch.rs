@@ -81,7 +81,6 @@ const fn on(label: &'static str, control: i32) -> Slot {
 
 const VEH_MOVE_LR: i32 = 59;
 const VEH_MOVE_UD: i32 = 60;
-const VEH_ATTACK: i32 = 69;
 const VEH_ACCELERATE: i32 = 71;
 const VEH_BRAKE: i32 = 72;
 const VEH_DUCK: i32 = 73;
@@ -118,7 +117,7 @@ const GAS: Slot = on("GAS", VEH_ACCELERATE);
 const BRAKE: Slot = on("BRAKE", VEH_BRAKE);
 const HBRAKE: Slot = on("H.BRAKE", VEH_HANDBRAKE);
 const HORN: Slot = Some(("HORN", Horn));
-const SHOOT: Slot = on("SHOOT", VEH_ATTACK);
+const SHOOT: Slot = Some(("SHOOT", Mouse(1)));
 const AIR_SHOOT: Slot = on("SHOOT", VEH_FLY_ATTACK);
 const DUCK: Slot = on("DUCK", VEH_DUCK);
 const RADIO: Slot = Some(("RADIO", Key("KeyQ")));

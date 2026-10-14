@@ -66,5 +66,6 @@ One player hosts from the launcher (or runs `muguet-server` on any machine), the
 - [inj-src](https://github.com/inj-src) for decoding bc textures on all cores
 - [Dbhardwaj99](https://github.com/Dbhardwaj99) for reporting real free disk space
 - [dre4moff](https://github.com/dre4moff) for releasing controller input when the app loses focus
+- [kjnefk](https://github.com/kjnefk) for importing your own saves
 
 Contributions are welcome !

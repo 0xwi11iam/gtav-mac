@@ -20,7 +20,6 @@ enum Arg {
 
     PoolGrow,
     CashWrite,
-    // replace the whole body: pass (i64, i64, i32, i64, i32, i32) on and return the host's i32 result
     OpusFrame,
 }
 
@@ -133,7 +132,6 @@ impl Reencode for Patcher {
             f.instruction(&I::I32Const(-1)).instruction(&I::Return);
             f.instruction(&I::End);
         } else if HOOKS[hook].2.contains(&Arg::OpusFrame) {
-            // native decoding (opus.rs); the original body stays behind the return
             for (k, wide) in [true, true, false, true, false, false].into_iter().enumerate() {
                 f.instruction(&I::LocalGet(k as u32));
                 if !wide { f.instruction(&I::I64ExtendI32S); }

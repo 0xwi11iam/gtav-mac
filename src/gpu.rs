@@ -93,7 +93,6 @@ struct Fmt {
 }
 
 static BC_SOFT: AtomicBool = AtomicBool::new(false);
-// BC1 textures become ASTC 4x4, transcoded on the GPU (bc1_astc.wgsl), when BC is missing but ASTC is there
 static BC1_ASTC: AtomicBool = AtomicBool::new(false);
 static F32_HALF: AtomicBool = AtomicBool::new(false);
 static MEM_STATS: LazyLock<bool> = LazyLock::new(|| std::env::var("MUGUET_MEM_STATS").is_ok_and(|v| v != "0"));
@@ -770,7 +769,6 @@ enum MapKind {
     Occlusion { list: Vec<(u64, u32, u64, bool, usize)> },
 }
 
-// one queued BC1 -> ASTC upload, converted in a batch by flush_astc
 struct AstcJob { tex_id: u32, tex: Texture, mip: u32, origin: Origin3d, bx: u32, by: u32, layers: u32, dst_row: u32, src_word: u32, dst_byte: u64, first_block: u32 }
 
 pub struct Gpu {
@@ -1346,7 +1344,6 @@ impl Gpu {
         let allowed = self.adapter.get_texture_format_features(m.format).allowed_usages;
         usage &= allowed | TextureUsages::COPY_SRC | TextureUsages::COPY_DST;
         let dimension = match dim { 3 => TextureDimension::D3, 1 => TextureDimension::D1, _ => TextureDimension::D2 };
-        // BC1 -> ASTC 4x4 (8 bits per pixel instead of 32 decoded); those keep their full resolution
         let astc = BC1_ASTC.load(Ordering::Relaxed) && matches!(m.bc, Some(TextureFormat::Bc1RgbaUnorm | TextureFormat::Bc1RgbaUnormSrgb))
             && dimension == TextureDimension::D2 && samples == 1 && w % 4 == 0 && h % 4 == 0 && bind & (BIND_RT | BIND_DS | BIND_UAV) == 0;
         if astc {
@@ -1490,7 +1487,6 @@ impl Gpu {
         if w == 0 || h == 0 { return; }
         if origin.x % 4 != 0 || origin.y % 4 != 0 { log_once("astcorigin", "BC1 upload not on a block boundary: skipped"); return; }
         let (bx, by) = (w.div_ceil(4), h.div_ceil(4));
-        // the game's rows may be padded: pack the blocks tightly into the batch
         let row = (bx * 8) as usize;
         let src_word = (self.astc_src.len() / 4) as u32;
         let base = self.astc_src.len();
@@ -1516,7 +1512,6 @@ impl Gpu {
         }
     }
 
-    // converts every queued BC1 upload in one dispatch, then copies each into its texture
     fn flush_astc(&mut self) {
         if self.astc_jobs.is_empty() { return; }
         let jobs = std::mem::take(&mut self.astc_jobs);

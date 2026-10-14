@@ -13,7 +13,6 @@ pub static FOCUSED: AtomicBool = AtomicBool::new(true);
 
 pub static IN_VEHICLE: AtomicBool = AtomicBool::new(false);
 
-// what the player is in, set by the script tick: the touch controls switch layout on it
 pub const MODE_FOOT: u8 = 0;
 pub const MODE_CAR: u8 = 1;
 pub const MODE_BIKE: u8 = 2;
@@ -25,7 +24,6 @@ pub const MODE_BICYCLE: u8 = 7;
 pub const MODE_PASSENGER: u8 = 8;
 pub static VEH_MODE: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(MODE_FOOT);
 
-// what the vehicle can do right now: the touch controls only show the buttons that apply
 pub const CTX_TOWING: u32 = 1;
 pub const CTX_TRAILER: u32 = 2;
 pub const CTX_CARGOBOB: u32 = 4;
@@ -37,7 +35,6 @@ pub const CTX_MELEE: u32 = 128;
 pub const CTX_THROWN: u32 = 256;
 pub static CONTEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
-// game control actions the touch controls hold this frame, as (INPUT_* index, value)
 pub static INJECT: Mutex<Vec<(i32, f32)>> = Mutex::new(Vec::new());
 
 #[derive(Clone, Copy, Debug, PartialEq)]

@@ -24,7 +24,6 @@ enum Act {
 
     Horn,
 
-    // a game control action held while the button is down, at this value
     Ctrl(i32, f32),
     Req(crate::pad::Request),
 }
@@ -38,7 +37,6 @@ enum Anchor {
     Nav(f64, f64),
 }
 
-// layouts, indexed by the mode the overlay is in (pad::MODE_*)
 const FOOT: usize = 0;
 const HELI: usize = 3;
 const PLANE: usize = 4;
@@ -51,9 +49,7 @@ struct Spec {
     anchor: Anchor,
     radius: f64,
     acts: [Slot; MODES],
-    // pad::CTX_* bits the vehicle must have for the button to show
     need: u32,
-    // and must not have
     unless: u32,
     nav: bool,
 }
@@ -61,20 +57,16 @@ struct Spec {
 const fn b(anchor: Anchor, radius: f64, acts: [Slot; MODES]) -> Spec {
     Spec { anchor, radius, acts, need: 0, unless: 0, nav: false }
 }
-// the same action in every layout
 const fn all(anchor: Anchor, radius: f64, label: &'static str, act: Act) -> Spec {
     b(anchor, radius, [Some((label, act)); MODES])
 }
-// the same action in every vehicle the player drives
 const fn driving(anchor: Anchor, radius: f64, slot: Slot) -> Spec {
     b(anchor, radius, [None, slot, slot, slot, slot, slot, slot, slot, None])
 }
-// shown only while the vehicle is in a given state
 const fn when(need: u32, anchor: Anchor, label: &'static str, act: Act) -> Spec {
     let slot = Some((label, act));
     Spec { anchor, radius: 24.0, acts: [None, slot, slot, slot, slot, slot, slot, slot, None], need, unless: 0, nav: false }
 }
-// on foot only, depending on what the player holds
 const fn held(need: u32, unless: u32, anchor: Anchor, radius: f64, label: &'static str, act: Act) -> Spec {
     let mut acts = [None; MODES];
     acts[FOOT] = Some((label, act));
@@ -87,7 +79,6 @@ const fn on(label: &'static str, control: i32) -> Slot {
     Some((label, Act::Ctrl(control, 1.0)))
 }
 
-// game control actions, numbered as in the game's InputType enum
 const VEH_MOVE_LR: i32 = 59;
 const VEH_MOVE_UD: i32 = 60;
 const VEH_ATTACK: i32 = 69;
@@ -135,8 +126,6 @@ const BACK: Slot = on("LOOK\nBACK", VEH_LOOK_BEHIND);
 const YAW_L: Slot = on("YAW\nLEFT", VEH_FLY_YAW_LEFT);
 const YAW_R: Slot = on("YAW\nRIGHT", VEH_FLY_YAW_RIGHT);
 const BUTTONS: &[Spec] = &[
-    //                                          foot                       car     bike    heli                                plane                                 boat                    sub                                    bicycle                                    passenger
-    // on foot it follows what the player holds
     held(0, CTX_GUN | CTX_MELEE | CTX_THROWN, BottomRight(62.0, 68.0), 40.0, "PUNCH", Mouse(1)),
     held(CTX_GUN, 0, BottomRight(62.0, 68.0), 40.0, "FIRE", Mouse(1)),
     held(CTX_MELEE, 0, BottomRight(62.0, 68.0), 40.0, "ATTACK", Mouse(1)),
@@ -149,7 +138,6 @@ const BUTTONS: &[Spec] = &[
     b(BottomRight(222.0, 98.0), 24.0, [None, HORN, HORN, YAW_R, YAW_R, HORN, on("DIVE", VEH_SUB_DESCEND), on("SPRINT", VEH_PUSHBIKE_SPRINT), None]),
     b(BottomRight(140.0, 200.0), 24.0, [None, SHOOT, SHOOT, AIR_SHOOT, AIR_SHOOT, None, None, None, None]),
     b(BottomRight(222.0, 160.0), 24.0, [None, DUCK, DUCK, None, on("GEAR", VEH_FLY_UNDERCARRIAGE), None, None, None, DUCK]),
-    // only while it applies
     when(CTX_TOWING, BottomRight(300.0, 70.0), "DROP\nCAR", Req(R::DropTow)),
     when(CTX_TRAILER, BottomRight(300.0, 70.0), "DROP\nTRAILER", Req(R::DropTrailer)),
     when(CTX_CARGOBOB, BottomRight(300.0, 70.0), "LOWER\nROPE", Req(R::Rope)).unless(CTX_ROPE),
@@ -336,7 +324,6 @@ fn label(parent: &AnyObject, r: f64) -> Retained<AnyObject> {
     }
 }
 
-// an SF Symbol for each button, so the overlay reads like a game hud rather than a row of words
 fn symbol(label: &str) -> Option<&'static str> {
     Some(match label {
         "PUNCH" => "hand.raised.fill",
@@ -403,7 +390,6 @@ fn set_content(b: &Btn, text: &str) {
     let d = 2.0 * b.radius;
     unsafe {
         let _: () = msg_send![&*b.icon, setImage: image.as_deref().map_or(std::ptr::null(), |i| i as *const AnyObject)];
-        // with an icon the label becomes a small caption under it
         let (frame, size, lines) = if image.is_some() {
             let _: () = msg_send![&*b.icon, setFrame: rect(0.0, d * 0.06, d, d * 0.6)];
             (rect(3.0, d * 0.64, d - 6.0, d * 0.24), (b.radius * 0.3).clamp(7.0, 10.0), 1isize)
@@ -425,7 +411,6 @@ fn set_text(l: &AnyObject, text: &str) {
 fn set_hidden(v: &AnyObject, hidden: bool) {
     unsafe { let _: () = msg_send![v, setHidden: hidden]; }
 }
-// buttons look like the game's hud: a dark disc with a thin light ring, filled white while held
 fn style_button(v: &AnyObject, label: &AnyObject, icon: &AnyObject, state: u8) {
     let (bg, ring, text) = match state {
         2 => (color(1.0, 0.85), 1.0, 0.0),
@@ -641,7 +626,6 @@ impl Overlay {
                     if ny < -0.35 { keys.insert("KeyW"); }
                     if ny > 0.35 { keys.insert("KeyS"); }
                 }
-                // the stick is the left stick of a pad: steer and lean (or the tow arm), or roll and pitch in the air
                 HELI | PLANE => {
                     inject.push((VEH_FLY_ROLL_LR, dead(nx)));
                     inject.push((VEH_FLY_PITCH_UD, dead(ny)));

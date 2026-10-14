@@ -1,9 +1,5 @@
 // muguet - opus.rs
-// the game decodes its Opus audio with libopus compiled to wasm; patch.rs reroutes the game's
-// opus_decode_frame here so the same frames are decoded by native libopus instead.
-// the game's caller has already parsed the packet and written the frame's mode, bandwidth,
-// stream channels and duration into its OpusDecoder; from those we rebuild a one-frame packet
-// (TOC byte + frame data) for the public native API.
+// Constantin Clerc (c22dev) - 0.1
 
 use audiopus_sys as ffi;
 use std::collections::HashMap;
@@ -19,8 +15,6 @@ struct Native { dec: *mut ffi::OpusDecoder, fs: i32, channels: i32 }
 unsafe impl Send for Native {}
 
 static DECODERS: Mutex<Option<HashMap<u64, Native>>> = Mutex::new(None);
-// byte offset of `mode` in the game's OpusDecoder; stream_channels and bandwidth sit just before it,
-// prev_mode and frame_size just after (libopus's struct order). found once, on the first frame.
 static MODE_OFF: AtomicI64 = AtomicI64::new(-1);
 
 fn rd(mem: &[u8], at: u64) -> i32 {
@@ -29,14 +23,12 @@ fn rd(mem: &[u8], at: u64) -> i32 {
 }
 
 fn find_mode_off(mem: &[u8], st: u64) -> Option<i64> {
-    // the caller has just written stream_channels (1, 2), bandwidth (1101..1105), mode (1000..1002)
     (16..4096u64).step_by(4).find(|&o| {
         let (sc, bw, mode) = (rd(mem, st + o - 8), rd(mem, st + o - 4), rd(mem, st + o));
         (1..=2).contains(&sc) && (1101..=1105).contains(&bw) && (MODE_SILK..=MODE_CELT).contains(&mode)
     }).map(|o| o as i64)
 }
 
-// the TOC configuration number for one frame (RFC 6716, section 3.1)
 fn toc_config(mode: i32, bandwidth: i32, samples: i32, fs: i32) -> Option<u8> {
     let quarter_ms = samples as i64 * 4000 / fs as i64; // duration in 0.25 ms
     let bw = bandwidth - 1101; // 0 NB, 1 MB, 2 WB, 3 SWB, 4 FB
@@ -59,7 +51,6 @@ fn toc_config(mode: i32, bandwidth: i32, samples: i32, fs: i32) -> Option<u8> {
     }
 }
 
-// opus_decode_frame(st, data, len, pcm, frame_size, decode_fec) -> samples per channel, or < 0
 pub fn decode_frame(mem: &mut [u8], st: u64, data: u64, len: i32, pcm: u64, frame_size: i32, fec: i32) -> i64 {
     let (channels, fs) = (rd(mem, st + 8), rd(mem, st + 12));
     if !(1..=2).contains(&channels) || fs <= 0 { return -1; }
@@ -89,8 +80,6 @@ pub fn decode_frame(mem: &mut [u8], st: u64, data: u64, len: i32, pcm: u64, fram
             map.entry(st).or_insert(Native { dec, fs, channels })
         }
     };
-    // libopus clears prev_mode when a decoder is created or reset; decoding sets it. so a zero here
-    // means the game (re)initialised this decoder, and the native one starts over too
     if prev_mode == 0 { unsafe { ffi::opus_decoder_ctl(native.dec, OPUS_RESET_STATE) }; }
 
     let cap = frame_size.max(0) as usize;

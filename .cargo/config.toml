@@ -1,3 +1,2 @@
 [env]
-# audiopus_sys builds its bundled libopus with a CMakeLists that CMake 4 only accepts with this
 CMAKE_POLICY_VERSION_MINIMUM = "3.5"

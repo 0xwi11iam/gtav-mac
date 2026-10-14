@@ -1115,7 +1115,6 @@ fn vehicle_mode(c: &mut Cmd, ped: i32, in_car: bool) {
         if c.i("IsVehicleAConvertible", &[i(veh), b(false)]) != 0 { ctx |= CTX_CONVERTIBLE; }
         if is(&["hydra"]) { ctx |= CTX_VTOL; }
     } else if ped != 0 {
-        // IS_PED_ARMED flags: 1 melee weapons, 2 thrown, 4 guns
         if c.i("IsPedArmed", &[i(ped), i(4)]) != 0 { ctx |= CTX_GUN; }
         else if c.i("IsPedArmed", &[i(ped), i(2)]) != 0 { ctx |= CTX_THROWN; }
         else if c.i("IsPedArmed", &[i(ped), i(1)]) != 0 { ctx |= CTX_MELEE; }

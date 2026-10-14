@@ -1,6 +1,5 @@
 // muguet - astc_check.rs
-// checks the BC1 -> ASTC transcoder (src/bc1_astc.wgsl) on a GPU that has ASTC (Apple silicon):
-// random BC1 blocks are transcoded, decoded by the GPU's own ASTC sampler, and compared with a CPU BC1 decode
+// Constantin Clerc (c22dev) - 0.1
 
 use wgpu::util::DeviceExt;
 use wgpu::*;
@@ -13,7 +12,6 @@ fn expand(c: u32) -> [i32; 3] {
     [((r << 3) | (r >> 2)) as i32, ((g << 2) | (g >> 4)) as i32, ((b << 3) | (b >> 2)) as i32]
 }
 
-// reference BC1 decode of one texel: rgba
 fn bc1(w0: u32, idx: u32, k: u32) -> [i32; 4] {
     let (c0, c1) = (w0 & 0xffff, w0 >> 16);
     let (a, b) = (expand(c0), expand(c1));
@@ -35,7 +33,6 @@ fn main() {
     println!("limits: max_buffer_size {} MB, max_storage_buffer_binding_size {} MB, max_compute_workgroups_per_dimension {}", l.max_buffer_size >> 20, l.max_storage_buffer_binding_size >> 20, l.max_compute_workgroups_per_dimension);
     let (device, queue) = pollster::block_on(adapter.request_device(&DeviceDescriptor { required_features: Features::TEXTURE_COMPRESSION_ASTC, ..Default::default() })).expect("device");
 
-    // random blocks, a third of each kind
     let mut seed = 0x2545F4914F6CDD1Du64;
     let mut rnd = || { seed ^= seed << 13; seed ^= seed >> 7; seed ^= seed << 17; (seed >> 16) as u32 };
     let mut src = Vec::new();
@@ -54,7 +51,6 @@ fn main() {
     let src_buf = device.create_buffer_init(&util::BufferInitDescriptor { label: None, contents: bytemuck_u32(&src), usage: BufferUsages::STORAGE });
     let row_bytes = (BW * 16).div_ceil(256) * 256;
     let dst_buf = device.create_buffer(&BufferDescriptor { label: None, size: (row_bytes * BH) as u64, usage: BufferUsages::STORAGE | BufferUsages::COPY_SRC, mapped_at_creation: false });
-    // four jobs of 16 block rows each, to exercise the job lookup
     let mut jobs: Vec<u32> = Vec::new();
     for j in 0..4u32 {
         let rows = BH / 4;
@@ -126,7 +122,6 @@ fn main() {
     device.poll(PollType::Wait { submission_index: None, timeout: None }).expect("poll");
     let px = read.slice(..).get_mapped_range().expect("mapped").to_vec();
 
-    // per block kind: max colour error, colour error on "approximated" texels, alpha mismatches
     let names = ["4-colour", "3-colour opaque", "3-colour + transparent"];
     let mut worst = [0i32; 3];
     let mut worst_mid = [0i32; 3];
@@ -157,7 +152,6 @@ fn main() {
     }
     println!("{}", if ok { "PASS" } else { "FAIL" });
 
-    // tiny mips: copy one full 4x4 block into the 2x2 and 1x1 levels, the way muguet uploads them
     let lost = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let l2 = lost.clone();
     device.set_device_lost_callback(move |r, m| { println!("device lost: {r:?} {m}"); l2.store(true, std::sync::atomic::Ordering::SeqCst); });
@@ -179,7 +173,6 @@ fn main() {
         println!("mip {mip} ({}x{}) copy of {}x{} texels: {}", (8 >> mip).max(1), (8 >> mip).max(1), n * 4, n * 4, if lost.load(std::sync::atomic::Ordering::SeqCst) { "DEVICE LOST" } else { "ok" });
     }
 
-    // a loading burst: 20000 small uploads converted by one batched dispatch
     let count = 20000u32;
     let mut srcs: Vec<u32> = Vec::new();
     let mut js: Vec<u32> = Vec::new();

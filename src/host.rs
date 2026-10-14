@@ -29,6 +29,17 @@ static PENDING_MAILBOX: LazyLock<Mutex<HashSet<u64>>> = LazyLock::new(|| Mutex::
 static ANY_PENDING: AtomicU64 = AtomicU64::new(0);
 static STUB_SEQ: AtomicU64 = AtomicU64::new(0);
 
+static STOPPED: AtomicBool = AtomicBool::new(false);
+static FATAL: Mutex<Option<String>> = Mutex::new(None);
+
+pub fn engine_stopped() -> bool {
+    !STOPPED.swap(true, Ordering::Relaxed)
+}
+
+pub fn stop_reason() -> Option<String> {
+    STOPPED.load(Ordering::Relaxed).then(|| FATAL.lock().unwrap().clone().unwrap_or_else(|| "A game thread stopped with an error.".into()))
+}
+
 thread_local! {
     static PENDING_LONGJMP: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static PENDING_UNWIND: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
@@ -189,7 +200,11 @@ pub fn call(mut caller: Caller<'_, HostState>, idx: usize, params: &[Val], resul
         "environ_get" => set_int(results, 0),
 
         "wasm_print_line_js" | "wasm_hang_line_js" => {
-            eprintln!("[eng] {}", read_cstr(mem, int(params, 0) as u64));
+            let line = read_cstr(mem, int(params, 0) as u64);
+            if let Some(at) = line.find("Fatal Error: ") {
+                FATAL.lock().unwrap().get_or_insert_with(|| line[at + 13..].to_string());
+            }
+            eprintln!("[eng] {line}");
         }
         "wasm_module_int_js" => set_int(results, int(params, 1)),
         "wasm_has_page_js" => set_int(results, 1),

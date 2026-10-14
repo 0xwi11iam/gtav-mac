@@ -265,6 +265,31 @@ fn fps_label(o: &Overlay) -> Option<Retained<AnyObject>> {
     }
 }
 
+thread_local! {
+    static STOP_NOTE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+fn stop_tick(o: &Overlay) {
+    if STOP_NOTE.get() { return; }
+    let Some(reason) = crate::host::stop_reason() else { return };
+    STOP_NOTE.set(true);
+    unsafe {
+        let parent: Option<Retained<AnyObject>> = msg_send![&*o.root, superview];
+        let Some(parent) = parent else { return };
+        let bounds: CGRect = msg_send![&*parent, bounds];
+        let l: Retained<AnyObject> = msg_send![class!(UILabel), new];
+        let _: () = msg_send![&*l, setFrame: bounds];
+        let _: () = msg_send![&*l, setNumberOfLines: 0isize];
+        let _: () = msg_send![&*l, setTextAlignment: 1isize];
+        let _: () = msg_send![&*l, setTextColor: &*color(1.0, 1.0)];
+        let _: () = msg_send![&*l, setBackgroundColor: &*color(0.0, 0.8)];
+        let font: Retained<AnyObject> = msg_send![class!(UIFont), systemFontOfSize: 17.0f64];
+        let _: () = msg_send![&*l, setFont: &*font];
+        set_text(&l, &format!("The game hit an error and can't continue.\n\n{reason}\n\nClose Muguet from the app switcher and open it again."));
+        let _: () = msg_send![&*parent, addSubview: &*l];
+    }
+}
+
 fn fps_tick(o: &Overlay) {
     let now_presents = crate::gpu::PRESENTS.load(std::sync::atomic::Ordering::Relaxed);
     if now_presents == 0 { return; }
@@ -713,6 +738,7 @@ pub fn refresh() -> bool {
         let mut guard = cell.borrow_mut();
         let Some(o) = guard.as_mut() else { return false };
         fps_tick(o);
+        stop_tick(o);
         if o.lingering { o.apply(); }
         let mut wheeling = false;
         for g in o.grips.values() {

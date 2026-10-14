@@ -5,6 +5,7 @@ use crate::mem_base_len;
 use regex::Regex;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
+use rustc_hash::FxHashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering};
@@ -799,9 +800,9 @@ pub struct Gpu {
     shader_dir: PathBuf,
     map_programs: HashMap<String, Rc<Program>>,
     next_uid: u64,
-    bgl_cache: HashMap<(String, u32, u32), (BindGroupLayout, u64)>,
+    bgl_cache: FxHashMap<(u64, u128, u32, u32), (BindGroupLayout, u64)>,
     empty_bgl: Option<(BindGroupLayout, u64)>,
-    pipelines: HashMap<Vec<i64>, PipeEntry>,
+    pipelines: FxHashMap<Vec<i64>, PipeEntry>,
     pipe_jobs: Option<std::sync::mpsc::Sender<(u64, PipeJob)>>,
     pipe_results: std::sync::mpsc::Receiver<(u64, Option<RenderPipeline>)>,
     pipe_pending: HashMap<u64, (Vec<i64>, Vec<VbReq>, String)>,
@@ -809,7 +810,7 @@ pub struct Gpu {
     pending_skips0: u64,
     pipe_wait_left: Duration,
     compute: HashMap<String, Option<(ComputePipeline, BindGroupLayout, u64, Rc<Program>)>>,
-    bind_groups: HashMap<Vec<u64>, (BindGroup, u64)>,
+    bind_groups: FxHashMap<Vec<u64>, (BindGroup, u64)>,
     ubo_slots: Vec<Vec<Chunk>>,
     ubo_shared: Vec<(Buffer, u64)>,
     ubo_slot: usize,
@@ -977,7 +978,7 @@ impl Gpu {
             base, mem, ring, device, queue, adapter, surface, surface_format, surface_size: (0, 0),
             objs: Vec::new(), enc: None, enc_epoch: 1, pass: None, pass_key: None, pass_info: None, pass_st: PassSt::default(),
             map_programs: HashMap::new(), s: State::new(), pdirty: true, last_pl: None, shader_index, shader_dir, next_uid: 1,
-            bgl_cache: HashMap::new(), empty_bgl: None, pipelines: HashMap::new(), compute: HashMap::new(), bind_groups: HashMap::new(),
+            bgl_cache: FxHashMap::default(), empty_bgl: None, pipelines: FxHashMap::default(), compute: HashMap::new(), bind_groups: FxHashMap::default(),
             ubo_slots: (0..FRAME_SLOTS).map(|_| Vec::new()).collect(), ubo_shared: Vec::new(), ubo_slot: 0, ubo_chunk: 0, ubo_off: 0,
             dummy_tex: HashMap::new(), dummy_smp: None, dummy_cmp: None, dummy_bufs: HashMap::new(), zero_vb: None, zero_src: None, scratch: None,
             proxy_pipelines: HashMap::new(), unfilt: HashMap::new(), nearest: HashMap::new(), f2d_pipeline: None, bc1_astc: None, astc_jobs: Vec::new(), astc_src: Vec::new(), astc_dst_bytes: 0, astc_blocks: 0, astc_pending: Default::default(), astc_in_encoder: 0, blit: None, mip_pipelines: HashMap::new(), mip_sampler: None,
@@ -1793,7 +1794,7 @@ impl Gpu {
 
     fn bgl_for(&mut self, prog: &Program, stage: u32, group: u32) -> (BindGroupLayout, u64) {
         let mask = self.unfilt.get(&prog.uid).copied().unwrap_or((0, 0));
-        let key = (format!("{}#{}#{:x}", prog.label, prog.uid, mask.0), stage, group);
+        let key = (prog.uid, mask.0, stage, group);
         if let Some(b) = self.bgl_cache.get(&key) { return b.clone(); }
         let entries: Vec<_> = prog.info.bindings.iter().filter(|b| b.group == group).map(|b| Self::layout_entry_masked(b, stage, mask)).collect();
         let bgl = self.device.create_bind_group_layout(&BindGroupLayoutDescriptor { label: None, entries: &entries });
@@ -2268,11 +2269,18 @@ impl Gpu {
             return None;
         }
         let (ci, off) = self.uniform_alloc(pack.size);
-        let mut block = vec![0u8; pack.size as usize];
+        let end = (off + pack.size) as usize;
+        let mut stage_buf = {
+            let chunk = &mut self.ubo_slots[self.ubo_slot][ci];
+            if chunk.stage.len() < end { chunk.stage.resize((end.max(262144)).next_power_of_two().min(RING_CHUNK as usize), 0); }
+            std::mem::take(&mut chunk.stage)
+        };
+        let block = &mut stage_buf[off as usize..end];
+        block.fill(0);
         for m in &pack.members {
-            let cb = self.s.cb[stage].get(m.binding as usize).cloned().unwrap_or_default();
-            if let Some(Buf { shadow: Some(sh), size, .. }) = self.buf(cb.buf) {
-                let from = cb.first as u64 * 16;
+            let (cb_buf, cb_first) = self.s.cb[stage].get(m.binding as usize).map(|c| (c.buf, c.first)).unwrap_or_default();
+            if let Some(Buf { shadow: Some(sh), size, .. }) = self.buf(cb_buf) {
+                let from = cb_first as u64 * 16;
                 let len = m.size.min(size.saturating_sub(from));
                 if len > 0 {
                     block[m.offset as usize..(m.offset + len) as usize].copy_from_slice(&sh[from as usize..(from + len) as usize]);
@@ -2280,9 +2288,7 @@ impl Gpu {
             }
         }
         let chunk = &mut self.ubo_slots[self.ubo_slot][ci];
-        let end = (off + pack.size) as usize;
-        if chunk.stage.len() < end { chunk.stage.resize((end.max(262144)).next_power_of_two().min(RING_CHUNK as usize), 0); }
-        chunk.stage[off as usize..end].copy_from_slice(&block);
+        chunk.stage = stage_buf;
         chunk.lo = chunk.lo.min(off);
         chunk.hi = chunk.hi.max(end as u64);
         Some((ci, off))
@@ -2323,11 +2329,13 @@ impl Gpu {
 
     fn stage_bind_group(&mut self, stage: usize, prog: &Program, group: u32, bgl: &(BindGroupLayout, u64)) -> Option<BgResult> {
         enum Res { Buf(Buffer, u64, Option<u64>), View(TextureView), Smp(Sampler) }
-        let bindings = prog.group_bindings.get(&group).cloned().unwrap_or_default();
-        let mut entries: Vec<(u32, Res)> = Vec::new();
-        let mut key: Vec<u64> = vec![bgl.1, prog.uid, stage as u64];
+        let none = Vec::new();
+        let bindings = prog.group_bindings.get(&group).unwrap_or(&none);
+        let mut entries: Vec<(u32, Res)> = Vec::with_capacity(bindings.len());
+        let mut key: Vec<u64> = Vec::with_capacity(bindings.len() * 2 + 3);
+        key.extend([bgl.1, prog.uid, stage as u64]);
         let mut dyn_off = None;
-        for b in &bindings {
+        for b in bindings {
             match b.kind {
                 Kind::Uniform => {
                     if b.binding == 15 {

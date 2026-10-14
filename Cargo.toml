@@ -8,6 +8,7 @@ edition = "2021"
 license = "GPL-3.0-or-later"
 
 [dependencies]
+rustc-hash = "2"
 wasmtime = { version = "49", default-features = false, features = ["runtime", "threads", "profiling", "anyhow"] }
 anyhow = "1"
 libc = "0.2"

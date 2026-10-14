@@ -123,6 +123,7 @@ pub fn call(mut caller: Caller<'_, HostState>, idx: usize, params: &[Val], resul
         "muguet_script" => crate::mp::script_tick(&mut caller, int(params, 0) as u64, int(params, 1) as u64)?,
         "muguet_explosion" => crate::mp::explosion(int(params, 0) as u64),
         "muguet_timewarp" => set_int(results, crate::mp::time_warp(int(params, 0))),
+        "muguet_resource_map" => merge_physical_pages(mem, int(params, 0) as u64),
         "muguet_pool" => set_int(results, pool_grow(int(params, 0) as u64) as i64),
         "muguet_cash" => set_int(results, crate::mp::cash_write(int(params, 0), int(params, 1) as u64) as i64),
         "muguet_txd" => set_int(results, crate::mp::txd_loaded(int(params, 0) as u64, int(params, 1))),
@@ -253,6 +254,30 @@ fn invoke(caller: &mut Caller<'_, HostState>, params: &[Val], results: &mut [Val
 }
 
 const STEP: u64 = 256 << 20;
+
+fn merge_physical_pages(mem: &SharedMemory, map: u64) {
+    let virt = crate::read_bytes(mem, map, 1)[0] as u64;
+    let entry = |k: u64| map + 16 + 24 * k;
+    let q = |a: u64| read_u64(mem, a).unwrap_or(0);
+    'merge: loop {
+        let phys = crate::read_bytes(mem, map + 1, 1)[0] as u64;
+        for k in virt..(virt + phys).saturating_sub(1) {
+            let (a, b) = (entry(k), entry(k + 1));
+            let size = q(a + 16);
+            if size == 0 || q(b + 16) != size || q(b) != q(a) + size {
+                continue;
+            }
+            write_u64(mem, a + 16, size * 2);
+            let tail = virt + phys - (k + 2);
+            let moved = crate::read_bytes(mem, entry(k + 2), 24 * tail);
+            write_bytes(mem, b, &moved);
+            write_bytes(mem, entry(virt + phys - 1), &[0; 24]);
+            write_bytes(mem, map + 1, &[(phys - 1) as u8]);
+            continue 'merge;
+        }
+        return;
+    }
+}
 
 fn pool_grow(size: u64) -> bool {
     static CAP: LazyLock<u64> = LazyLock::new(|| {

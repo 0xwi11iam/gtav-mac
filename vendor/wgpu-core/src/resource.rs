@@ -1247,6 +1247,7 @@ pub struct StagingBuffer {
     raw: Box<dyn hal::DynBuffer>,
     device: Arc<Device>,
     pub(crate) size: wgt::BufferSize,
+    capacity: u64,
     is_coherent: bool,
     ptr: NonNull<u8>,
 }
@@ -1254,15 +1255,26 @@ pub struct StagingBuffer {
 impl StagingBuffer {
     pub(crate) fn new(device: &Arc<Device>, size: wgt::BufferSize) -> Result<Self, DeviceError> {
         profiling::scope!("StagingBuffer::new");
-        let stage_desc = hal::BufferDescriptor {
-            label: hal_label(Some("(wgpu internal) Staging"), device.instance_flags),
-            size: size.get(),
-            usage: wgt::BufferUses::MAP_WRITE | wgt::BufferUses::COPY_SRC,
-            memory_flags: hal::MemoryFlags::TRANSIENT,
+        let capacity = staging_capacity(size.get());
+        let pooled = if capacity <= STAGING_POOL_MAX_BUFFER {
+            let mut pool = device.staging_pool.lock();
+            pool.iter().position(|(c, _)| *c == capacity).map(|i| pool.swap_remove(i).1)
+        } else {
+            None
         };
-
-        let raw = unsafe { device.raw().create_buffer(&stage_desc) }
-            .map_err(|e| device.handle_hal_error(e))?;
+        let raw = match pooled {
+            Some(raw) => raw,
+            None => {
+                let stage_desc = hal::BufferDescriptor {
+                    label: hal_label(Some("(wgpu internal) Staging"), device.instance_flags),
+                    size: capacity,
+                    usage: wgt::BufferUses::MAP_WRITE | wgt::BufferUses::COPY_SRC,
+                    memory_flags: hal::MemoryFlags::TRANSIENT,
+                };
+                unsafe { device.raw().create_buffer(&stage_desc) }
+                    .map_err(|e| device.handle_hal_error(e))?
+            }
+        };
         let mapping = unsafe { device.raw().map_buffer(raw.as_ref(), 0..size.get()) }
             .map_err(|e| device.handle_hal_error(e))?;
 
@@ -1270,6 +1282,7 @@ impl StagingBuffer {
             raw,
             device: device.clone(),
             size,
+            capacity,
             is_coherent: mapping.is_coherent,
             ptr: mapping.ptr,
         };
@@ -1340,13 +1353,14 @@ impl StagingBuffer {
         unsafe { device.unmap_buffer(self.raw.as_ref()) };
 
         let StagingBuffer {
-            raw, device, size, ..
+            raw, device, size, capacity, ..
         } = self;
 
         FlushedStagingBuffer {
             raw: ManuallyDrop::new(raw),
             device,
             size,
+            capacity,
         }
     }
 }
@@ -1359,6 +1373,7 @@ pub struct FlushedStagingBuffer {
     raw: ManuallyDrop<Box<dyn hal::DynBuffer>>,
     device: Arc<Device>,
     pub(crate) size: wgt::BufferSize,
+    capacity: u64,
 }
 
 impl FlushedStagingBuffer {
@@ -1372,7 +1387,29 @@ impl Drop for FlushedStagingBuffer {
         resource_log!("Destroy raw StagingBuffer");
         // SAFETY: We are in the Drop impl and we don't use self.raw anymore after this point.
         let raw = unsafe { ManuallyDrop::take(&mut self.raw) };
+        if self.capacity <= STAGING_POOL_MAX_BUFFER {
+            let mut pool = self.device.staging_pool.lock();
+            let pooled: u64 = pool.iter().map(|(c, _)| *c).sum();
+            if pooled + self.capacity <= STAGING_POOL_MAX_TOTAL {
+                pool.push((self.capacity, raw));
+                return;
+            }
+        }
         unsafe { self.device.raw().destroy_buffer(raw) };
+    }
+}
+
+/// Staging buffers up to this size are rounded up to a power of two and reused
+/// instead of being created and destroyed for every write.
+const STAGING_POOL_MAX_BUFFER: u64 = 4 << 20;
+/// Most staging memory kept around for reuse.
+const STAGING_POOL_MAX_TOTAL: u64 = 64 << 20;
+
+fn staging_capacity(size: u64) -> u64 {
+    if size <= STAGING_POOL_MAX_BUFFER {
+        size.next_power_of_two().max(256)
+    } else {
+        size
     }
 }
 

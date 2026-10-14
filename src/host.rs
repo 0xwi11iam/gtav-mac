@@ -123,6 +123,7 @@ pub fn call(mut caller: Caller<'_, HostState>, idx: usize, params: &[Val], resul
         "muguet_script" => crate::mp::script_tick(&mut caller, int(params, 0) as u64, int(params, 1) as u64)?,
         "muguet_explosion" => crate::mp::explosion(int(params, 0) as u64),
         "muguet_timewarp" => set_int(results, crate::mp::time_warp(int(params, 0))),
+        "muguet_cash" => set_int(results, crate::mp::cash_write(int(params, 0), int(params, 1) as u64) as i64),
         "muguet_txd" => set_int(results, crate::mp::txd_loaded(int(params, 0) as u64, int(params, 1))),
         "muguet_text" => set_int(results, missing_text(&mut caller, int(params, 0) as u32)? as i64),
         "__pthread_create_js" => {

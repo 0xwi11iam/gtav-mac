@@ -93,6 +93,9 @@ struct Fmt {
 
 static BC_SOFT: AtomicBool = AtomicBool::new(false);
 static F32_HALF: AtomicBool = AtomicBool::new(false);
+// MUGUET_MEM_STATS=1 adds the slow stats to the fps log (resident heap, malloc, live wgpu objects):
+// mincore over the whole heap, the malloc locks and the wgpu report cost ~100 ms per log on an iPad
+static MEM_STATS: LazyLock<bool> = LazyLock::new(|| std::env::var("MUGUET_MEM_STATS").is_ok_and(|v| v != "0"));
 static RE_VAR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"@binding\((\d+)u?\)\s*var(?:<[^>]*>)?\s+(\w+)").unwrap());
 static RE_IDENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\w+").unwrap());
 
@@ -771,11 +774,14 @@ pub struct Gpu {
     ring: u64,
     device: Device,
     queue: Queue,
+    live_queries: std::collections::HashSet<u64>,
+    query_done: Arc<Mutex<Vec<(u64, u64, u32)>>>,
+    stale_query_writes: u64,
     adapter: Adapter,
     surface: Option<(Surface<'static>, Arc<winit::window::Window>)>,
     surface_format: TextureFormat,
     surface_size: (u32, u32),
-    objs: Vec<Option<Obj>>,
+    objs: Vec<Option<Box<Obj>>>,
     enc: Option<CommandEncoder>,
     enc_epoch: u64,
     pass: Option<RenderPass<'static>>,
@@ -889,7 +895,8 @@ impl Gpu {
             F32_HALF.store(true, Ordering::Relaxed);
             log("this GPU can't filter 32-bit float textures: sampling them as 16-bit");
         }
-        if !features.contains(Features::TEXTURE_COMPRESSION_BC) {
+        // MUGUET_SOFT_BC=1 takes the no-BC (iPhone) path on a GPU that has BC, for testing
+        if !features.contains(Features::TEXTURE_COMPRESSION_BC) || std::env::var_os("MUGUET_SOFT_BC").is_some() {
             BC_SOFT.store(true, Ordering::Relaxed);
             log("this GPU can't read BC textures: decoding them on the CPU");
         }
@@ -916,6 +923,7 @@ impl Gpu {
                     log(&format!("validation error: {}", &msg[..msg.len().min(900)]));
                 }
             }));
+            device.set_device_lost_callback(|reason, message| log(&format!("GPU device lost ({reason:?}): {message}")));
         }
         let info = adapter.get_info();
         log(&format!("device ready: {} ({:?}), features {:?}", info.name, info.backend, features));
@@ -950,6 +958,7 @@ impl Gpu {
             Some(job_tx)
         };
         Ok(Gpu {
+            live_queries: Default::default(), query_done: Default::default(), stale_query_writes: 0,
             instance: instance.clone(), pending_clears: HashMap::new(), clears_folded: 0, pipe_jobs, pipe_results, pipe_pending: HashMap::new(), pending_skips: 0, pending_skips0: 0, pipe_wait_left: PIPELINE_WAIT,
             base, mem, ring, device, queue, adapter, surface, surface_format, surface_size: (0, 0),
             objs: Vec::new(), enc: None, enc_epoch: 1, pass: None, pass_key: None, pass_info: None, pass_st: PassSt::default(),
@@ -986,10 +995,10 @@ impl Gpu {
     }
 
     fn obj(&self, id: u32) -> Option<&Obj> {
-        self.objs.get(id as usize).and_then(|o| o.as_ref())
+        self.objs.get(id as usize).and_then(|o| o.as_deref())
     }
     fn obj_mut(&mut self, id: u32) -> Option<&mut Obj> {
-        self.objs.get_mut(id as usize).and_then(|o| o.as_mut())
+        self.objs.get_mut(id as usize).and_then(|o| o.as_deref_mut())
     }
     fn set_obj(&mut self, id: u32, o: Obj) {
         let i = id as usize;
@@ -1000,7 +1009,7 @@ impl Gpu {
         if self.objs.len() <= i {
             self.objs.resize_with(i + 1, || None);
         }
-        self.objs[i] = Some(o);
+        self.objs[i] = Some(Box::new(o));
     }
     fn tex(&self, id: u32) -> Option<&Tex> {
         match self.obj(id) { Some(Obj::Tex(t)) => Some(t), _ => None }
@@ -1097,6 +1106,7 @@ impl Gpu {
                 while SUSPENDED.load(Ordering::Relaxed) { std::thread::sleep(Duration::from_millis(50)); }
             }
             self.process_maps(false);
+            self.apply_query_results();
             if self.inflight.load(Ordering::SeqCst) > 0 {
                 let _ = self.device.poll(PollType::Poll);
             }
@@ -1282,9 +1292,10 @@ impl Gpu {
         if self.obj(id).is_none() { return; }
         if self.used(id) { self.flush(); }
         if let Some(o) = self.objs.get_mut(id as usize).and_then(|o| o.take()) {
-            match o {
+            match *o {
                 Obj::Tex(t) => t.tex.destroy(),
                 Obj::Buf(b) => { if let Some(g) = b.gpu { g.destroy(); } }
+                Obj::Query(q) => { self.live_queries.remove(&q.addr); }
                 _ => {}
             }
         }
@@ -3023,7 +3034,14 @@ impl Gpu {
             self.map_pending(rb, MapKind::Readback { flag, rows: vec![(0, addr, n)] });
             return;
         }
-        let Some((tex, fmt, desc)) = self.tex(src).map(|x| (x.tex.clone(), x.format, x.desc)) else { done(self); return };
+        let Some((tex, fmt, desc, bc)) = self.tex(src).map(|x| (x.tex.clone(), x.format, x.desc, x.bc)) else { done(self); return };
+        if let Some(bc) = bc {
+            // the game expects block-compressed rows, but this texture was decompressed on upload:
+            // copying the decoded pixels back would overflow the game's buffer
+            log_once(&format!("rbbc{bc:?}"), &format!("readback of a software-decoded {bc:?} texture: skipped"));
+            done(self);
+            return;
+        }
         if desc.samples > 1 || is_depth(fmt) { log_once(&format!("rbfmt{fmt:?}"), &format!("readback of {fmt:?} not supported")); done(self); return; }
         let (mip, layer) = (sub % desc.mips, sub / desc.mips);
         let (mw, mh) = ((desc.w >> mip).max(1), (desc.h >> mip).max(1));
@@ -3045,12 +3063,18 @@ impl Gpu {
             Extent3d { width: bx * bw, height: by * bh, depth_or_array_layers: if three { d } else { 1 } },
         );
         self.flush();
+        // never write past a row's pitch or the end of the game's buffer
+        let row_len = if row_pitch != 0 { row_bytes.min(row_pitch) } else { row_bytes };
+        let end = if size != 0 { addr + size } else { u64::MAX };
         let mut rows = Vec::new();
         for z in 0..d as u64 {
             for row in 0..by as u64 {
-                rows.push(((z * by as u64 + row) * bpr, addr + z * slice_pitch + row * row_pitch, row_bytes));
+                let to = addr + z * slice_pitch + row * row_pitch;
+                if to >= end { break; }
+                rows.push(((z * by as u64 + row) * bpr, to, row_len.min(end - to)));
             }
         }
+        if row_len < row_bytes { log_once(&format!("rbpitch{fmt:?}"), &format!("readback rows of {row_bytes} bytes clamped to the game's pitch {row_pitch} ({fmt:?})")); }
         self.map_pending(rb, MapKind::Readback { flag, rows });
     }
 
@@ -3074,6 +3098,7 @@ impl Gpu {
                     MapKind::Readback { rows, .. } => {
                         for &(from, to, n) in rows {
                             let n = n.min(range.len() as u64 - from.min(range.len() as u64));
+                            crate::heapcheck::note(to, n, "gpu readback");
                             unsafe { std::ptr::copy_nonoverlapping(range.as_ptr().add(from as usize), self.base.add(to as usize), n as usize); }
                         }
                     }
@@ -3096,13 +3121,20 @@ impl Gpu {
         }
     }
 
-    fn query_store(&self, addr: u64, result: u64, seq: u32) {
+    fn query_store(&mut self, addr: u64, result: u64, seq: u32) {
+        if !self.live_queries.contains(&addr) {
+            self.stale_query_writes += 1;
+            log(&format!("skipped a GPU query result for a deleted query at 0x{addr:x} (total {})", self.stale_query_writes));
+            return;
+        }
+        crate::heapcheck::note(addr, 16, "gpu query result");
         atomic(&self.mem, addr + 8).store(result as u32 as i32, Ordering::SeqCst);
         atomic(&self.mem, addr + 12).store((result >> 32) as u32 as i32, Ordering::SeqCst);
         atomic(&self.mem, addr).store(seq as i32, Ordering::SeqCst);
         let _ = self.mem.atomic_notify(addr, u32::MAX);
     }
     fn create_query(&mut self, id: u32, qtype: u32, addr: u64) {
+        self.live_queries.insert(addr);
         self.set_obj(id, Obj::Query(QueryObj { qtype, addr, slots: vec![] }));
         if self.occlusion_set.is_none() {
             self.occlusion_set = Some(self.device.create_query_set(&QuerySetDescriptor { label: None, ty: QueryType::Occlusion, count: OCCLUSION_CAPACITY }));
@@ -3172,6 +3204,10 @@ impl Gpu {
         let done = Arc::new(AtomicBool::new(false));
         Some(PendingMap { buf: map, done, kind: MapKind::Occlusion { list: out } })
     }
+    fn apply_query_results(&mut self) {
+        let done = std::mem::take(&mut *self.query_done.lock().unwrap());
+        for (addr, v, seq) in done { self.query_store(addr, v, seq); }
+    }
     fn on_submitted(&mut self) {
         let unmapped: Vec<usize> = self.pending_maps.iter().enumerate().filter(|(_, m)| matches!(m.kind, MapKind::Occlusion { .. }) && !m.done.load(Ordering::SeqCst)).map(|(i, _)| i).collect();
         let _ = unmapped;
@@ -3181,14 +3217,13 @@ impl Gpu {
             let inflight = self.inflight.clone();
             inflight.fetch_add(1, Ordering::SeqCst);
             let addrs: Vec<(u64, u64, u32)> = evs.iter().filter_map(|(id, seq, v)| match self.obj(*id) { Some(Obj::Query(q)) => Some((q.addr, *v, *seq)), _ => None }).collect();
+            // stored by the GPU thread (apply_query_results), which knows whether the query still exists
+            let results = self.query_done.clone();
+            let ring = self.ring;
             self.queue.on_submitted_work_done(move || {
-                for (addr, v, seq) in addrs {
-                    atomic(&mem, addr + 8).store(v as u32 as i32, Ordering::SeqCst);
-                    atomic(&mem, addr + 12).store((v >> 32) as u32 as i32, Ordering::SeqCst);
-                    atomic(&mem, addr).store(seq as i32, Ordering::SeqCst);
-                    let _ = mem.atomic_notify(addr, u32::MAX);
-                }
+                results.lock().unwrap().extend(addrs);
                 inflight.fetch_sub(1, Ordering::SeqCst);
+                let _ = mem.atomic_notify(ring, u32::MAX);
             });
         }
     }
@@ -3307,17 +3342,20 @@ impl Gpu {
         let dt = now.duration_since(self.fps_t0).as_secs_f64();
         if dt >= 10.0 {
             let frames = self.presents - self.fps_n0;
+            let resident = if *MEM_STATS { format!(" ({} MB resident)", crate::heap_resident_mb()) } else { String::new() };
+            let malloc = if *MEM_STATS { format!(", malloc {} MB", crate::malloc_mb()) } else { String::new() };
             log(&format!(
-                "fps: {:.1} ({} MB memory, game heap {} MB, {} frames, {} clears folded, {} draws/frame, {} draws waiting for a compiling pipeline, {:.1} submits/frame, {:.1} passes/frame, {} skipped total, pipelines {}, bind groups cached {}, validation errors {})",
-                frames as f64 / dt, crate::footprint_mb(), crate::RT.get().map(|r| r.mem.data_size() >> 20).unwrap_or(0), frames, self.clears_folded, (self.draws - self.fps_d0) / frames.max(1), self.pending_skips - self.pending_skips0, (self.submits - self.submits0) as f64 / frames.max(1) as f64,
+                "fps: {:.1} ({} MB memory, game heap {} MB{resident}, gpu {} MB, compressed {} MB{malloc}, {} frames, {} clears folded, {} draws/frame, {} draws waiting for a compiling pipeline, {:.1} submits/frame, {:.1} passes/frame, {} skipped total, pipelines {}, bind groups cached {}, validation errors {})",
+                frames as f64 / dt, crate::footprint_mb(), crate::RT.get().map(|r| r.mem.data_size() >> 20).unwrap_or(0), crate::gpu_allocated_mb(), crate::compressed_mb(), frames, self.clears_folded, (self.draws - self.fps_d0) / frames.max(1), self.pending_skips - self.pending_skips0, (self.submits - self.submits0) as f64 / frames.max(1) as f64,
                 (self.passes - self.passes0) as f64 / frames.max(1) as f64, self.skipped, self.pipe_creates, self.bind_groups.len(), self.errors.load(Ordering::Relaxed)
             ));
-            if let Some(r) = self.instance.generate_report() {
+            let report = if *MEM_STATS { self.instance.generate_report() } else { None };
+            if let Some(r) = report {
                 let h = &r.hub;
-                log(&format!("live wgpu objects: buffers {} textures {} views {} bind groups {} samplers {} pipelines {} | engine objects {}",
+                log(&format!("live wgpu objects: buffers {} textures {} views {} bind groups {} samplers {} pipelines {} | engine objects {} (slots {})",
                     h.buffers.num_kept_from_user, h.textures.num_kept_from_user, h.texture_views.num_kept_from_user,
                     h.bind_groups.num_kept_from_user, h.samplers.num_kept_from_user, h.render_pipelines.num_kept_from_user,
-                    self.objs.iter().filter(|o| o.is_some()).count()));
+                    self.objs.iter().filter(|o| o.is_some()).count(), self.objs.len()));
             }
             self.submits0 = self.submits;
             self.pending_skips0 = self.pending_skips;

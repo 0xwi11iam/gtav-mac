@@ -21,6 +21,8 @@ enum Arg {
     PoolGrow,
     CashWrite,
     OpusFrame,
+
+    ResourceMap,
 }
 
 const HOOKS: &[(&str, &str, &[Arg])] = &[
@@ -32,12 +34,13 @@ const HOOKS: &[(&str, &str, &[Arg])] = &[
     ("muguet_pool", "rage::sysMemGrowBuddyAllocator::GrowHeap()", &[Arg::PoolGrow]),
     ("muguet_cash", "stats_commands::CommandStatSetInt(int, int, bool)", &[Arg::CashWrite, Arg::CashWrite]),
     ("muguet_opus_frame", "opus_decode_frame", &[Arg::OpusFrame; 6]),
+    ("muguet_resource_map", "rage::datResourceInfo::GenerateMap(rage::datResourceMap&) const", &[Arg::ResourceMap]),
 ];
 
 const SCENARIO_CHECK: &str = "CScenarioManager::PerformCollisionChecksForScenarioPoint(CScenarioManager::CollisionCheckParams const&)";
 const MOVIE_PRELOAD: &str = "CMovieMgr::PreloadMovie(char const*, bool)";
 
-pub const VERSION: u32 = 10;
+pub const VERSION: u32 = 11;
 
 fn returns(args: &[Arg]) -> bool {
     args.contains(&Arg::Local1Replaced) || args.contains(&Arg::MissingText) || args.contains(&Arg::TxdLoaded) || args.contains(&Arg::PoolGrow) || args.contains(&Arg::CashWrite) || args.contains(&Arg::OpusFrame)
@@ -125,6 +128,23 @@ impl Reencode for Patcher {
         let mut f = self.new_function_with_parsed_locals(&func)?;
         use wasm_encoder::Instruction as I;
         let call = I::Call(self.imported_funcs + hook as u32);
+        if HOOKS[hook].2 == [Arg::ResourceMap] {
+            let mut reader = func.get_operators_reader()?;
+            let mut body = Vec::new();
+            while !reader.eof() {
+                body.push(self.parse_instruction(&mut reader)?);
+            }
+            let end = body.pop();
+            for i in &body {
+                f.instruction(i);
+            }
+            f.instruction(&I::LocalGet(1)).instruction(&call);
+            if let Some(e) = end {
+                f.instruction(&e);
+            }
+            code.function(&f);
+            return Ok(());
+        }
         if HOOKS[hook].2 == [Arg::PoolGrow] {
             let Some(size) = self.pool_size else { return Err(Error::UserError(anyhow::anyhow!("GetHeapSize not found"))) };
             f.instruction(&I::LocalGet(0)).instruction(&I::Call(size + self.shift())).instruction(&call).instruction(&I::I64Eqz);
@@ -175,7 +195,7 @@ impl Reencode for Patcher {
                     Arg::Local0 => f.instruction(&I::LocalGet(0)),
                     Arg::TlsBase => f.instruction(&I::GlobalGet(self.tls_global)),
                     Arg::Local1Replaced => f.instruction(&I::LocalGet(1)).instruction(&I::I64ExtendI32U),
-                    Arg::MissingText | Arg::TxdLoaded | Arg::PoolGrow | Arg::CashWrite | Arg::OpusFrame => unreachable!(),
+                    Arg::MissingText | Arg::TxdLoaded | Arg::PoolGrow | Arg::CashWrite | Arg::OpusFrame | Arg::ResourceMap => unreachable!(),
                 };
             }
             f.instruction(&call);

@@ -244,7 +244,7 @@ impl App {
             eprintln!("[host] iOS gives the game {} MB, increased memory limit entitlement: {}", limit >> 20, match entitled { 1 => "yes", 0 => "no", _ => "unknown" });
             let uncapped = settings.iter().any(|a| a == "-frameLimit=0");
             unsafe { muguet_hold_refresh(if uncapped { 120.0 } else { 60.0 }) };
-            self.args.retain(|a| !a.starts_with("-frameLimit=") && !a.starts_with("-wasmstartchoice="));
+            self.args.retain(|a| !a.starts_with("-frameLimit=") && !a.starts_with("-wasmstartchoice=") && !a.starts_with("-FrameQueueLimit="));
             self.args.extend(settings);
             self.start_engine();
         }

@@ -149,6 +149,7 @@ const BUTTONS: &[Spec] = &[
     b(TopRight(138.0, 30.0), 22.0, [Some(("CROUCH", Key("ControlLeft"))), BACK, BACK, None, None, BACK, None, BACK, BACK]),
     all(TopRight(192.0, 30.0), 22.0, "CAM", Key("KeyV")),
     driving(TopRight(30.0, 84.0), 22.0, on("LIGHTS", VEH_HEADLIGHT)),
+    all(TopRight(84.0, 84.0), 22.0, "ABILITY", Key("CapsLock")),
     all(TopLeft(30.0, 30.0), 22.0, "PAUSE", KeyNav("Escape")),
     all(TopLeft(84.0, 30.0), 22.0, "PHONE", KeyNav("ArrowUp")),
     all(TopLeft(138.0, 30.0), 22.0, "MENU\nKEYS", NavToggle),
@@ -369,6 +370,7 @@ fn symbol(label: &str) -> Option<&'static str> {
         "OK" => "checkmark",
         "BACK" => "arrow.uturn.left",
         "ACTION" => "hand.point.up.left.fill",
+        "ABILITY" => "sparkles",
         _ => return None,
     })
 }

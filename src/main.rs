@@ -286,7 +286,10 @@ pub fn run_engine(rt: &Arc<Runtime>, args: Vec<String>) -> Result<()> {
             eprintln!("[host] main unwound with a live runtime; waiting on engine threads");
             loop { std::thread::park(); }
         }
-        Err(e) => eprintln!("[host] main trapped: {e:?}"),
+        Err(e) => {
+            eprintln!("[host] main trapped: {e:?}");
+            stopped();
+        }
     }
     Ok(())
 }
@@ -519,12 +522,20 @@ fn run_pthread(rt: &Arc<Runtime>, ptr: u64, start_routine: u64, arg: u64) -> Res
         Err(e) => {
             let name = read_thread_name(&rt.mem, ptr);
             eprintln!("[host] thread {name} trapped: {e:?}");
+            stopped();
             return Ok(());
         }
     };
     match call_export(&mut store, &inst, "_emscripten_thread_exit", &[Val::I64(result)]) {
         Err(e) if !host::take_unwind() => Err(e.into()),
         _ => Ok(()),
+    }
+}
+
+fn stopped() {
+    if !host::engine_stopped() || cfg!(target_os = "ios") { return; }
+    if let Some(reason) = host::stop_reason() {
+        alert("Muguet stopped", &format!("The game hit an error and can't continue:\n\n{reason}"));
     }
 }
 

@@ -46,25 +46,18 @@ func saveSlot(of name: String) -> Int? {
 }
 
 final class SaveImporter: ObservableObject {
-    @Published var title = defaultTitle
     @Published var status: String?
     @Published var statusIsError = false
-
-    func validTitle(_ t: String) -> Bool {
-        let trimmed = t.trimmingCharacters(in: .whitespacesAndNewlines)
-        return !trimmed.isEmpty && !trimmed.contains("..") && trimmed.rangeOfCharacter(from: CharacterSet(charactersIn: "\\/:*?\"<>|")) == nil
-    }
 
     func importSave(_ source: URL) {
         let fm = FileManager.default
         let name = source.lastPathComponent
         statusIsError = false
         guard saveSlot(of: name) != nil else { return fail("That doesn't look like a save file (SGTA5xxxx).") }
-        guard validTitle(title) else { return fail("Check the title folder.") }
 
         let dir = savesRoot
             .appendingPathComponent("userdata/Documents/Rockstar Games")
-            .appendingPathComponent(trimmedTitle)
+            .appendingPathComponent(defaultTitle)
             .appendingPathComponent("Default")
         let dest = dir.appendingPathComponent(name)
         if source.standardizedFileURL == dest.standardizedFileURL {
@@ -81,7 +74,7 @@ final class SaveImporter: ObservableObject {
             try fm.copyItem(at: source, to: staged)
             try fm.createDirectory(at: dir, withIntermediateDirectories: true)
             if fm.fileExists(atPath: dest.path) {
-                let b = backupURL(for: dest, title: trimmedTitle)
+                let b = backupURL(for: dest, title: defaultTitle)
                 try fm.copyItem(at: dest, to: b)
                 backup = b
                 try fm.removeItem(at: dest)
@@ -111,8 +104,6 @@ final class SaveImporter: ObservableObject {
         status = message
         statusIsError = true
     }
-
-    private var trimmedTitle: String { title.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     private func backupURL(for dest: URL, title: String) -> URL {
         let dir = savesRoot.appendingPathComponent("save-backups").appendingPathComponent(title)
@@ -347,8 +338,6 @@ struct LauncherView: View {
                     }
                 }
                 Section("Load custom save") {
-                    TextField("Title folder", text: $save.title)
-                        .autocorrectionDisabled().textInputAutocapitalization(.never)
                     Button("Import save…") { pickingSave = true }
                     Text("Your current save is kept in the saves/save-backups folder.")
                         .font(.caption).foregroundStyle(.secondary)

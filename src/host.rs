@@ -246,8 +246,6 @@ fn invoke(caller: &mut Caller<'_, HostState>, params: &[Val], results: &mut [Val
     }
 }
 
-// the game's streaming pool grows in 256 MB steps up to 8 GB and the heap never shrinks, so on ios growth stops at a cap
-// (MUGUET_POOL_CAP_MB, 2560 MB by default) and the game evicts older assets instead
 const STEP: u64 = 256 << 20;
 
 fn pool_grow(size: u64) -> bool {
@@ -255,7 +253,6 @@ fn pool_grow(size: u64) -> bool {
         let mb = std::env::var("MUGUET_POOL_CAP_MB").ok().and_then(|v| v.parse::<u64>().ok());
         mb.map(|mb| mb << 20).unwrap_or(if cfg!(target_os = "ios") { 2560 << 20 } else { u64::MAX })
     });
-    // the size reads just under each step, and growth adds a whole step
     let ok = size.saturating_add(STEP) <= CAP.saturating_add(16 << 20);
     static TOLD: AtomicBool = AtomicBool::new(false);
     if !ok && !TOLD.swap(true, Ordering::Relaxed) {

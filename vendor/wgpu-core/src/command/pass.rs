@@ -56,9 +56,6 @@ pub(crate) struct PassState<'scope, 'snatch_guard, 'cmd_enc> {
 
     pub(crate) dynamic_offset_count: usize,
 
-    // muguet: bind groups already merged into `scope` / with init actions already registered in
-    // this pass. both are idempotent within a pass, and a group re-set only for a new dynamic
-    // offset (every draw, for muguet's constants) would otherwise redo them for every resource
     pub(crate) merged_bind_groups: crate::FastHashSet<usize>,
     pub(crate) inited_bind_groups: crate::FastHashSet<usize>,
 

@@ -368,9 +368,6 @@ pub fn explosion(args: u64) {
 
 static OTHERS_HERE: AtomicBool = AtomicBool::new(false);
 
-// Right after a save loads, the story script `main` writes 0 into all three characters' cash
-// (it follows a leaderboard error, so it likely takes a fallback for the missing network layer),
-// which throws away the money the save just restored. Skip those writes; every other cash change goes through.
 pub fn cash_write(value: i64, tls: u64) -> bool {
     if value != 0 { return false; }
     let mem = &crate::RT.get().unwrap().mem;

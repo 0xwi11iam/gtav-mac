@@ -18,9 +18,7 @@ enum Arg {
 
     TxdLoaded,
 
-    // pass the pool's size to the host before it grows, and fail the growth when the host says no
     PoolGrow,
-    // the story characters' cash writes only: pass (value, tls base) and skip the write (reporting success) when the host says so
     CashWrite,
 }
 
@@ -140,7 +138,6 @@ impl Reencode for Patcher {
                 f.instruction(&I::End);
             }
         } else if HOOKS[hook].2.first() == Some(&Arg::CashWrite) {
-            // stat writes are frequent: only call out for SP0/SP1/SP2_TOTAL_CASH
             for k in 0..3 {
                 f.instruction(&I::LocalGet(0)).instruction(&I::I32Const(crate::proto::joaat(&format!("SP{k}_TOTAL_CASH")) as i32)).instruction(&I::I32Eq);
                 f.instruction(&I::If(wasm_encoder::BlockType::Empty));

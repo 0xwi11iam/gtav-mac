@@ -16,6 +16,7 @@ mod keyboard;
 #[cfg(target_os = "ios")]
 mod mouse;
 mod mp;
+mod opus;
 mod pad;
 #[cfg(feature = "jit")]
 mod patch;

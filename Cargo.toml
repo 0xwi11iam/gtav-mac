@@ -26,6 +26,7 @@ objc2-game-controller = { version = "0.3", default-features = false, features = 
 wasmparser = { version = "0.258.3", optional = true }
 wasm-encoder = { version = "0.258.3", optional = true, features = ["wasmparser"] }
 bcdec_rs = "0.2.0"
+audiopus_sys = { version = "0.2", features = ["static"] }
 
 [features]
 default = ["jit"]

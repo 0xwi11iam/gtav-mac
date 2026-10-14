@@ -20,6 +20,8 @@ enum Arg {
 
     PoolGrow,
     CashWrite,
+    // replace the whole body: pass (i64, i64, i32, i64, i32, i32) on and return the host's i32 result
+    OpusFrame,
 }
 
 const HOOKS: &[(&str, &str, &[Arg])] = &[
@@ -30,15 +32,16 @@ const HOOKS: &[(&str, &str, &[Arg])] = &[
     ("muguet_txd", "graphics_commands::HasStreamedTxdLoaded(char const*)", &[Arg::TxdLoaded, Arg::TxdLoaded]),
     ("muguet_pool", "rage::sysMemGrowBuddyAllocator::GrowHeap()", &[Arg::PoolGrow]),
     ("muguet_cash", "stats_commands::CommandStatSetInt(int, int, bool)", &[Arg::CashWrite, Arg::CashWrite]),
+    ("muguet_opus_frame", "opus_decode_frame", &[Arg::OpusFrame; 6]),
 ];
 
 const SCENARIO_CHECK: &str = "CScenarioManager::PerformCollisionChecksForScenarioPoint(CScenarioManager::CollisionCheckParams const&)";
 const MOVIE_PRELOAD: &str = "CMovieMgr::PreloadMovie(char const*, bool)";
 
-pub const VERSION: u32 = 9;
+pub const VERSION: u32 = 10;
 
 fn returns(args: &[Arg]) -> bool {
-    args.contains(&Arg::Local1Replaced) || args.contains(&Arg::MissingText) || args.contains(&Arg::TxdLoaded) || args.contains(&Arg::PoolGrow) || args.contains(&Arg::CashWrite)
+    args.contains(&Arg::Local1Replaced) || args.contains(&Arg::MissingText) || args.contains(&Arg::TxdLoaded) || args.contains(&Arg::PoolGrow) || args.contains(&Arg::CashWrite) || args.contains(&Arg::OpusFrame)
 }
 
 struct Patcher {
@@ -129,6 +132,13 @@ impl Reencode for Patcher {
             f.instruction(&I::If(wasm_encoder::BlockType::Empty));
             f.instruction(&I::I32Const(-1)).instruction(&I::Return);
             f.instruction(&I::End);
+        } else if HOOKS[hook].2.contains(&Arg::OpusFrame) {
+            // native decoding (opus.rs); the original body stays behind the return
+            for (k, wide) in [true, true, false, true, false, false].into_iter().enumerate() {
+                f.instruction(&I::LocalGet(k as u32));
+                if !wide { f.instruction(&I::I64ExtendI32S); }
+            }
+            f.instruction(&call).instruction(&I::I32WrapI64).instruction(&I::Return);
         } else if HOOKS[hook].2 == [Arg::MissingText] {
             // only call out for the listed hashes: text lookups are hot
             for (label, _) in crate::host::MISSING_TEXT {
@@ -167,7 +177,7 @@ impl Reencode for Patcher {
                     Arg::Local0 => f.instruction(&I::LocalGet(0)),
                     Arg::TlsBase => f.instruction(&I::GlobalGet(self.tls_global)),
                     Arg::Local1Replaced => f.instruction(&I::LocalGet(1)).instruction(&I::I64ExtendI32U),
-                    Arg::MissingText | Arg::TxdLoaded | Arg::PoolGrow | Arg::CashWrite => unreachable!(),
+                    Arg::MissingText | Arg::TxdLoaded | Arg::PoolGrow | Arg::CashWrite | Arg::OpusFrame => unreachable!(),
                 };
             }
             f.instruction(&call);

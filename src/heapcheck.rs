@@ -1,13 +1,11 @@
 // muguet - heapcheck.rs
-// debug aid: walks the game's dlmalloc heap to catch corruption close to when it happens,
-// and keeps a journal of muguet's own writes into game memory to see who touched a damaged chunk
+// Constantin Clerc (c22dev) - 0.1
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-// dlmalloc's global state (_gm_) in this build of game.wasm, and offsets into it (wasm64 layout)
 const GM: u64 = 0x1C3_AC30;
 const GM_TOPSIZE: u64 = 16;
 const GM_TOP: u64 = 40;
@@ -53,8 +51,6 @@ fn rd(base: *mut u8, len: usize, addr: u64) -> Option<u64> {
 }
 
 fn run() {
-    // never touches the game's allocator lock: a walk can race with a malloc on another thread,
-    // so damage is only reported when the same chunk is still bad on a second walk a moment later
     let mut reported = false;
     loop {
         std::thread::sleep(Duration::from_secs(2));

@@ -93,8 +93,6 @@ struct Fmt {
 
 static BC_SOFT: AtomicBool = AtomicBool::new(false);
 static F32_HALF: AtomicBool = AtomicBool::new(false);
-// MUGUET_MEM_STATS=1 adds the slow stats to the fps log (resident heap, malloc, live wgpu objects):
-// mincore over the whole heap, the malloc locks and the wgpu report cost ~100 ms per log on an iPad
 static MEM_STATS: LazyLock<bool> = LazyLock::new(|| std::env::var("MUGUET_MEM_STATS").is_ok_and(|v| v != "0"));
 static RE_VAR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"@binding\((\d+)u?\)\s*var(?:<[^>]*>)?\s+(\w+)").unwrap());
 static RE_IDENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\w+").unwrap());
@@ -895,7 +893,6 @@ impl Gpu {
             F32_HALF.store(true, Ordering::Relaxed);
             log("this GPU can't filter 32-bit float textures: sampling them as 16-bit");
         }
-        // MUGUET_SOFT_BC=1 takes the no-BC (iPhone) path on a GPU that has BC, for testing
         if !features.contains(Features::TEXTURE_COMPRESSION_BC) || std::env::var_os("MUGUET_SOFT_BC").is_some() {
             BC_SOFT.store(true, Ordering::Relaxed);
             log("this GPU can't read BC textures: decoding them on the CPU");
@@ -3036,8 +3033,6 @@ impl Gpu {
         }
         let Some((tex, fmt, desc, bc)) = self.tex(src).map(|x| (x.tex.clone(), x.format, x.desc, x.bc)) else { done(self); return };
         if let Some(bc) = bc {
-            // the game expects block-compressed rows, but this texture was decompressed on upload:
-            // copying the decoded pixels back would overflow the game's buffer
             log_once(&format!("rbbc{bc:?}"), &format!("readback of a software-decoded {bc:?} texture: skipped"));
             done(self);
             return;
@@ -3063,7 +3058,6 @@ impl Gpu {
             Extent3d { width: bx * bw, height: by * bh, depth_or_array_layers: if three { d } else { 1 } },
         );
         self.flush();
-        // never write past a row's pitch or the end of the game's buffer
         let row_len = if row_pitch != 0 { row_bytes.min(row_pitch) } else { row_bytes };
         let end = if size != 0 { addr + size } else { u64::MAX };
         let mut rows = Vec::new();
@@ -3217,7 +3211,6 @@ impl Gpu {
             let inflight = self.inflight.clone();
             inflight.fetch_add(1, Ordering::SeqCst);
             let addrs: Vec<(u64, u64, u32)> = evs.iter().filter_map(|(id, seq, v)| match self.obj(*id) { Some(Obj::Query(q)) => Some((q.addr, *v, *seq)), _ => None }).collect();
-            // stored by the GPU thread (apply_query_results), which knows whether the query still exists
             let results = self.query_done.clone();
             let ring = self.ring;
             self.queue.on_submitted_work_done(move || {

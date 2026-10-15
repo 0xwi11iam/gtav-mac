@@ -2715,6 +2715,24 @@ pub(super) fn encode_render_pass(
 
         let pending_discard_init_fixups = state.pass.pending_discard_init_fixups;
 
+        // Metal barriers are no-ops, so when nothing else needs to run before the
+        // pass, update the trackers here instead of opening a separate command buffer.
+        if device.backend() == wgt::Backend::Metal
+            && pending_discard_init_fixups.is_empty()
+            && pending_query_resets.is_empty()
+            && indirect_draw_validation_batcher.is_empty()
+        {
+            let raw = parent_state.raw_encoder.open().map_pass_err(pass_scope)?;
+            CommandEncoder::insert_barriers_from_scope(
+                raw,
+                parent_state.tracker,
+                &trackers,
+                parent_state.snatch_guard,
+            );
+            parent_state.raw_encoder.close().map_pass_err(pass_scope)?;
+            return Ok(());
+        }
+
         parent_state.raw_encoder.close().map_pass_err(pass_scope)?;
         (trackers, pending_discard_init_fixups, pending_query_resets)
     };

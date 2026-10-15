@@ -1257,8 +1257,7 @@ impl StagingBuffer {
         profiling::scope!("StagingBuffer::new");
         let capacity = staging_capacity(size.get());
         let pooled = if capacity <= STAGING_POOL_MAX_BUFFER {
-            let mut pool = device.staging_pool.lock();
-            pool.iter().position(|(c, _)| *c == capacity).map(|i| pool.swap_remove(i).1)
+            device.staging_pool.lock().take(capacity)
         } else {
             None
         };
@@ -1389,9 +1388,8 @@ impl Drop for FlushedStagingBuffer {
         let raw = unsafe { ManuallyDrop::take(&mut self.raw) };
         if self.capacity <= STAGING_POOL_MAX_BUFFER {
             let mut pool = self.device.staging_pool.lock();
-            let pooled: u64 = pool.iter().map(|(c, _)| *c).sum();
-            if pooled + self.capacity <= STAGING_POOL_MAX_TOTAL {
-                pool.push((self.capacity, raw));
+            if pool.total + self.capacity <= STAGING_POOL_MAX_TOTAL {
+                pool.put(self.capacity, raw);
                 return;
             }
         }
@@ -1404,6 +1402,38 @@ impl Drop for FlushedStagingBuffer {
 const STAGING_POOL_MAX_BUFFER: u64 = 4 << 20;
 /// Most staging memory kept around for reuse.
 const STAGING_POOL_MAX_TOTAL: u64 = 64 << 20;
+
+/// Finished staging buffers kept for reuse, one list per power-of-two capacity.
+#[derive(Default)]
+pub(crate) struct StagingPool {
+    buckets: [Vec<Box<dyn hal::DynBuffer>>; 16],
+    pub(crate) total: u64,
+}
+
+impl StagingPool {
+    fn bucket(capacity: u64) -> usize {
+        (capacity.trailing_zeros() as usize).saturating_sub(8).min(15)
+    }
+    fn take(&mut self, capacity: u64) -> Option<Box<dyn hal::DynBuffer>> {
+        let raw = self.buckets[Self::bucket(capacity)].pop()?;
+        self.total -= capacity;
+        Some(raw)
+    }
+    fn put(&mut self, capacity: u64, raw: Box<dyn hal::DynBuffer>) {
+        self.buckets[Self::bucket(capacity)].push(raw);
+        self.total += capacity;
+    }
+    pub(crate) fn drain(&mut self) -> impl Iterator<Item = Box<dyn hal::DynBuffer>> + '_ {
+        self.total = 0;
+        self.buckets.iter_mut().flat_map(|b| b.drain(..))
+    }
+}
+
+impl core::fmt::Debug for StagingPool {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("StagingPool").field("total", &self.total).finish()
+    }
+}
 
 fn staging_capacity(size: u64) -> u64 {
     if size <= STAGING_POOL_MAX_BUFFER {

@@ -273,7 +273,7 @@ pub struct Device {
     pub(crate) instance_flags: wgt::InstanceFlags,
     pub(crate) deferred_destroy: Mutex<Vec<DeferredDestroy>>,
     /// Staging buffers kept for reuse by `StagingBuffer::new`, by capacity.
-    pub(crate) staging_pool: Mutex<crate::resource::StagingPool>,
+    pub(crate) staging_pool: Mutex<resource::StagingPool>,
     pub(crate) usage_scopes: UsageScopePool,
     pub(crate) indirect_validation: Option<crate::indirect_validation::IndirectValidation>,
     // Optional so that we can late-initialize this after the queue is created.
@@ -309,7 +309,7 @@ impl Drop for Device {
     fn drop(&mut self) {
         resource_log!("Drop {}", self.error_ident());
 
-        for raw in core::mem::take(&mut *self.staging_pool.lock()).drain() {
+        for raw in mem::take(&mut *self.staging_pool.lock()).drain() {
             unsafe { self.raw.destroy_buffer(raw) };
         }
 

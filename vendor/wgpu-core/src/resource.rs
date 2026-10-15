@@ -1429,8 +1429,8 @@ impl StagingPool {
     }
 }
 
-impl core::fmt::Debug for StagingPool {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl fmt::Debug for StagingPool {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("StagingPool").field("total", &self.total).finish()
     }
 }

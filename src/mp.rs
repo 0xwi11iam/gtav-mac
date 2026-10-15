@@ -199,6 +199,7 @@ pub const COMMANDS: &[(&str, &str)] = &[
     ("SetPedShootsAtCoord", "ped_commands::CommandSetPedShootsAtCoord(int, rage::scrVector const&, bool)"),
     ("SetPedMaxHealth", "ped_commands::CommandSetPedMaxHealth(int, int)"),
     ("GetSelectedPedWeapon", "weapon_commands::CommandGetSelectedPedWeapon(int)"),
+    ("GetWeaponTypeGroup", "weapon_commands::CommandGetWeaponTypeGroup(int)"),
     ("GiveWeaponToPed", "weapon_commands::CommandGiveWeaponToPed(int, int, int, bool, bool)"),
     ("SetCurrentPedWeapon", "weapon_commands::CommandSetCurrentPedWeapon(int, int, bool)"),
     ("SetPedInfiniteAmmoClip", "weapon_commands::CommandSetPedInfiniteAmmoClip(int, bool)"),
@@ -1115,7 +1116,12 @@ fn vehicle_mode(c: &mut Cmd, ped: i32, in_car: bool) {
         if c.i("IsVehicleAConvertible", &[i(veh), b(false)]) != 0 { ctx |= CTX_CONVERTIBLE; }
         if is(&["hydra"]) { ctx |= CTX_VTOL; }
     } else if ped != 0 {
-        if c.i("IsPedArmed", &[i(ped), i(4)]) != 0 { ctx |= CTX_GUN; }
+        if c.i("IsPedArmed", &[i(ped), i(4)]) != 0 {
+            ctx |= CTX_GUN;
+            let weapon = c.i("GetSelectedPedWeapon", &[i(ped)]);
+            let group = c.i("GetWeaponTypeGroup", &[i(weapon)]) as u32;
+            if group == crate::proto::joaat("GROUP_SNIPER") { ctx |= CTX_SNIPER; }
+        }
         else if c.i("IsPedArmed", &[i(ped), i(2)]) != 0 { ctx |= CTX_THROWN; }
         else if c.i("IsPedArmed", &[i(ped), i(1)]) != 0 { ctx |= CTX_MELEE; }
     }

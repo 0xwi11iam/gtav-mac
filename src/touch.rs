@@ -742,6 +742,7 @@ pub fn refresh() -> bool {
         stop_tick(o);
         if o.lingering { o.apply(); }
         let mut wheeling = false;
+        let mut radio = None;
         for g in o.grips.values() {
             if let Grip::Button { idx, start, last } = g {
                 if !o.is_wheel(*idx) {
@@ -750,12 +751,19 @@ pub fn refresh() -> bool {
                 wheeling = true;
                 let (dx, dy) = (last.0 - start.0, last.1 - start.1);
                 let len = (dx * dx + dy * dy).sqrt();
+                let is_radio = matches!(o.spec_act(*idx), Some((_, Key("KeyQ"))));
                 if len > WHEEL_DEADZONE {
-                    let push = WHEEL_PUSH * ((len - WHEEL_DEADZONE) / WHEEL_FULL).min(1.0);
-                    input::mouse_delta_f(dx / len * push, dy / len * push);
+                    let amount = ((len - WHEEL_DEADZONE) / WHEEL_FULL).min(1.0);
+                    if is_radio {
+                        radio = Some(((dx / len * amount) as f32, (dy / len * amount) as f32));
+                    } else {
+                        let push = WHEEL_PUSH * amount;
+                        input::mouse_delta_f(dx / len * push, dy / len * push);
+                    }
                 }
             }
         }
+        *crate::pad::RADIO_WHEEL.lock().unwrap() = radio;
         let hide = crate::pad::ACTIVE.load(std::sync::atomic::Ordering::Relaxed);
 
         if !hide { input::set_locked(true); }

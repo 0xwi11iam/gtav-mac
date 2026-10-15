@@ -931,6 +931,10 @@ pub fn script_tick(caller: &mut Caller<'_, HostState>, thread: u64, tls: u64) ->
             for (control, value) in crate::pad::INJECT.lock().unwrap().iter() {
                 c.i("SetControlValueNextFrame", &[i(0), i(*control), f(*value)]);
             }
+            if let Some((lr, ud)) = *crate::pad::RADIO_WHEEL.lock().unwrap() {
+                c.i("SetControlValueNextFrame", &[i(crate::pad::FRONTEND_CONTROL), i(crate::pad::RADIO_WHEEL_LR), f(lr)]);
+                c.i("SetControlValueNextFrame", &[i(crate::pad::FRONTEND_CONTROL), i(crate::pad::RADIO_WHEEL_UD), f(ud)]);
+            }
             let requests = std::mem::take(&mut *crate::pad::REQUESTS.lock().unwrap());
             for r in requests {
                 handle_request(&mut c, ped, r);

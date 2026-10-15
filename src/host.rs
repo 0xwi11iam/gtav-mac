@@ -79,6 +79,7 @@ fn export_call(caller: &mut Caller<'_, HostState>, name: &str, args: &[Val]) -> 
 // labels the scripts print that no loaded text block has (the copy in arm1.gxt2 only loads during that mission)
 pub const MISSING_TEXT: &[(&str, &str)] = &[
     ("HELP_DCK", "~s~Hold ~INPUT_VEH_DUCK~ to duck when sitting inside a vehicle."),
+    ("HELP_KM", "~s~Press ~INPUT_CONTEXT~ to use the camera in your glasses, then ~INPUT_ATTACK~ to take a photo."),
 ];
 
 fn missing_text(caller: &mut Caller<'_, HostState>, hash: u32) -> Result<u64> {

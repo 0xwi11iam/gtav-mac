@@ -109,7 +109,7 @@ const VEH_PUSHBIKE_PEDAL: i32 = 136;
 const VEH_PUSHBIKE_SPRINT: i32 = 137;
 const VEH_PUSHBIKE_FRONT_BRAKE: i32 = 138;
 
-use crate::pad::{CTX_CARGOBOB, CTX_CONVERTIBLE, CTX_GUN, CTX_MELEE, CTX_ROPE, CTX_THROWN, CTX_TOWING, CTX_TRAILER, CTX_VTOL};
+use crate::pad::{CTX_CARGOBOB, CTX_CONVERTIBLE, CTX_GUN, CTX_MELEE, CTX_ROPE, CTX_SWIM, CTX_THROWN, CTX_TOWING, CTX_TRAILER, CTX_VTOL};
 use crate::pad::Request as R;
 use Act::*;
 use Anchor::*;
@@ -129,6 +129,7 @@ const BUTTONS: &[Spec] = &[
     held(CTX_GUN, 0, BottomRight(62.0, 68.0), 40.0, "FIRE", Mouse(1)),
     held(CTX_MELEE, 0, BottomRight(62.0, 68.0), 40.0, "ATTACK", Mouse(1)),
     held(CTX_THROWN, 0, BottomRight(62.0, 68.0), 40.0, "THROW", Mouse(1)),
+    held(CTX_SWIM, 0, BottomRight(222.0, 160.0), 24.0, "SPRINT", Key("ShiftLeft")),
     held(CTX_GUN, 0, BottomRight(222.0, 98.0), 24.0, "RELOAD", Key("KeyR")),
     b(BottomRight(62.0, 68.0), 40.0, [None, GAS, GAS, on("UP", VEH_FLY_THROTTLE_UP), on("THRUST", VEH_FLY_THROTTLE_UP), GAS, on("GAS", VEH_SUB_THROTTLE_UP), on("PEDAL", VEH_PUSHBIKE_PEDAL), on("SHOOT", VEH_PASSENGER_ATTACK)]),
     b(BottomRight(158.0, 46.0), 31.0, [Some(("AIM", AimToggle)), BRAKE, BRAKE, on("DOWN", VEH_FLY_THROTTLE_DOWN), on("SLOW", VEH_FLY_THROTTLE_DOWN), on("REVERSE", VEH_BRAKE), on("REVERSE", VEH_SUB_THROTTLE_DOWN), on("BRAKE", VEH_PUSHBIKE_FRONT_BRAKE), on("AIM", VEH_PASSENGER_AIM)]),

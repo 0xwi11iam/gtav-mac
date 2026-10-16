@@ -112,7 +112,7 @@ const SNIPER_ZOOM_IN: i32 = 42;
 const SNIPER_ZOOM_OUT: i32 = 43;
 const VEH_PUSHBIKE_FRONT_BRAKE: i32 = 138;
 
-use crate::pad::{CTX_CARGOBOB, CTX_CONVERTIBLE, CTX_GUN, CTX_MELEE, CTX_ROPE, CTX_SNIPER, CTX_THROWN, CTX_TOWING, CTX_TRAILER, CTX_VTOL};
+use crate::pad::{CTX_CARGOBOB, CTX_CONVERTIBLE, CTX_GUN, CTX_MELEE, CTX_ROPE, CTX_SNIPER, CTX_SWIM, CTX_THROWN, CTX_TOWING, CTX_TRAILER, CTX_VTOL};
 use crate::pad::Request as R;
 use Act::*;
 use Anchor::*;
@@ -132,12 +132,14 @@ const BUTTONS: &[Spec] = &[
     held(CTX_GUN, 0, BottomRight(62.0, 68.0), 40.0, "FIRE", Mouse(1)),
     held(CTX_MELEE, 0, BottomRight(62.0, 68.0), 40.0, "ATTACK", Mouse(1)),
     held(CTX_THROWN, 0, BottomRight(62.0, 68.0), 40.0, "THROW", Mouse(1)),
+    held(CTX_SWIM, 0, BottomRight(222.0, 160.0), 24.0, "SPRINT", Key("ShiftLeft")),
     held(CTX_GUN, 0, BottomRight(222.0, 98.0), 24.0, "RELOAD", Key("KeyR")),
     held(CTX_SNIPER, 0, BottomRight(300.0, 132.0), 24.0, "ZOOM\nIN", Ctrl(SNIPER_ZOOM_IN, 1.0)),
     held(CTX_SNIPER, 0, BottomRight(300.0, 70.0), 24.0, "ZOOM\nOUT", Ctrl(SNIPER_ZOOM_OUT, 1.0)),
     b(BottomRight(62.0, 68.0), 40.0, [None, GAS, GAS, on("UP", VEH_FLY_THROTTLE_UP), on("THRUST", VEH_FLY_THROTTLE_UP), GAS, on("GAS", VEH_SUB_THROTTLE_UP), on("PEDAL", VEH_PUSHBIKE_PEDAL), on("SHOOT", VEH_PASSENGER_ATTACK)]),
     b(BottomRight(158.0, 46.0), 31.0, [Some(("AIM", AimToggle)), BRAKE, BRAKE, on("DOWN", VEH_FLY_THROTTLE_DOWN), on("SLOW", VEH_FLY_THROTTLE_DOWN), on("REVERSE", VEH_BRAKE), on("REVERSE", VEH_SUB_THROTTLE_DOWN), on("BRAKE", VEH_PUSHBIKE_FRONT_BRAKE), on("AIM", VEH_PASSENGER_AIM)]),
-    b(BottomRight(58.0, 168.0), 28.0, [Some(("JUMP", Key("Space"))), HBRAKE, HBRAKE, YAW_L, YAW_L, None, on("RISE", VEH_SUB_ASCEND), on("HOP", VEH_HANDBRAKE), None]),
+    b(BottomRight(58.0, 168.0), 28.0, [Some(("JUMP", Key("Space"))), HBRAKE, HBRAKE, YAW_L, YAW_L, None, on("RISE", VEH_SUB_ASCEND), on("HOP", VEH_HANDBRAKE), None]).unless(CTX_SWIM),
+    held(CTX_SWIM, 0, BottomRight(58.0, 168.0), 28.0, "DIVE", Key("Space")),
     all(BottomRight(140.0, 132.0), 26.0, "EXIT", Key("KeyF")).foot(Some(("ENTER", Key("KeyF")))),
     b(BottomRight(222.0, 98.0), 24.0, [None, HORN, HORN, YAW_R, YAW_R, HORN, on("DIVE", VEH_SUB_DESCEND), on("SPRINT", VEH_PUSHBIKE_SPRINT), None]),
     b(BottomRight(140.0, 200.0), 24.0, [Some(("ACTION", Key("KeyE"))), SHOOT, SHOOT, AIR_SHOOT, AIR_SHOOT, None, None, None, None]),

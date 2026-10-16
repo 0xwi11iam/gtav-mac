@@ -192,6 +192,8 @@ pub const COMMANDS: &[(&str, &str)] = &[
     ("GetInteriorFromEntity", "interior_commands::CommandGetInteriorFromEntity(int)"),
     ("GetPedSourceOfDeath", "ped_commands::CommandGetPedSourceOfDeath(int)"),
     ("IsPedArmed", "weapon_commands::CommandIsPedArmed(int, int)"),
+    ("IsPedSwimming", "ped_commands::CommandIsPedSwimming(int)"),
+    ("IsPedSwimmingUnderWater", "ped_commands::CommandIsPedSwimmingUnderWater(int)"),
     ("GetWeaponDamage", "weapon_commands::CommandGetWeaponDamage(int, int)"),
     ("GetWeaponDamageType", "weapon_commands::CommandGetWeaponDamageType(int)"),
     ("SetPedToRagdoll", "ped_commands::CommandSetPedToRagdoll(int, int, int, int, bool, bool, bool)"),
@@ -1116,6 +1118,7 @@ fn vehicle_mode(c: &mut Cmd, ped: i32, in_car: bool) {
         if c.i("IsVehicleAConvertible", &[i(veh), b(false)]) != 0 { ctx |= CTX_CONVERTIBLE; }
         if is(&["hydra"]) { ctx |= CTX_VTOL; }
     } else if ped != 0 {
+        if c.i("IsPedSwimming", &[i(ped)]) != 0 || c.i("IsPedSwimmingUnderWater", &[i(ped)]) != 0 { ctx |= CTX_SWIM; }
         if c.i("IsPedArmed", &[i(ped), i(4)]) != 0 {
             ctx |= CTX_GUN;
             let weapon = c.i("GetSelectedPedWeapon", &[i(ped)]);

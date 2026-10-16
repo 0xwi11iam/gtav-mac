@@ -75,6 +75,10 @@ impl QueryResetMap {
         }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
+
     pub fn use_query_set(&mut self, query_set: &Arc<QuerySet>, query: u32) -> bool {
         let vec_pair = self
             .map

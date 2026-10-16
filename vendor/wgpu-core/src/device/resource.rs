@@ -272,6 +272,8 @@ pub struct Device {
     pub(crate) ordered_texture_usages: wgt::TextureUses,
     pub(crate) instance_flags: wgt::InstanceFlags,
     pub(crate) deferred_destroy: Mutex<Vec<DeferredDestroy>>,
+    /// Staging buffers kept for reuse by `StagingBuffer::new`, by capacity.
+    pub(crate) staging_pool: Mutex<resource::StagingPool>,
     pub(crate) usage_scopes: UsageScopePool,
     pub(crate) indirect_validation: Option<crate::indirect_validation::IndirectValidation>,
     // Optional so that we can late-initialize this after the queue is created.
@@ -306,6 +308,10 @@ impl fmt::Debug for Device {
 impl Drop for Device {
     fn drop(&mut self) {
         resource_log!("Drop {}", self.error_ident());
+
+        for raw in mem::take(&mut *self.staging_pool.lock()).drain() {
+            unsafe { self.raw.destroy_buffer(raw) };
+        }
 
         // SAFETY: We are in the Drop impl and we don't use self.zero_buffer anymore after this
         // point.
@@ -557,6 +563,7 @@ impl Device {
             ordered_texture_usages,
             instance_flags,
             deferred_destroy: Mutex::new(rank::DEVICE_DEFERRED_DESTROY, Vec::new()),
+            staging_pool: Mutex::new(rank::DEVICE_STAGING_POOL, Default::default()),
             usage_scopes: Mutex::new(rank::DEVICE_USAGE_SCOPES, Default::default()),
             timestamp_normalizer: OnceCellOrLock::new(),
             indirect_validation,

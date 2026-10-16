@@ -33,7 +33,9 @@ default = ["jit"]
 jit = ["wasmtime/cranelift", "wasmtime/parallel-compilation", "dep:wasmparser", "dep:wasm-encoder"]
 
 [profile.release]
-opt-level = 2
+opt-level = 3
+lto = "thin"
+codegen-units = 1
 
 [patch.crates-io]
 wgpu-core = { path = "vendor/wgpu-core" }

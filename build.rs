@@ -37,4 +37,9 @@ fn main() {
     println!("cargo:rustc-link-search=native={sdk}/usr/lib/swift");
     let toolchain = std::path::Path::new(&swiftc).parent().unwrap().parent().unwrap().join("lib/swift/iphoneos");
     println!("cargo:rustc-link-search=native={}", toolchain.display());
+
+    let rt = std::path::Path::new(&xcrun(&["clang", "-print-resource-dir"])).join("lib/darwin/libclang_rt.ios.a");
+    if rt.is_file() {
+        println!("cargo:rustc-link-arg-bins={}", rt.display());
+    }
 }

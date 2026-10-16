@@ -33,6 +33,7 @@ pub const CTX_VTOL: u32 = 32;
 pub const CTX_GUN: u32 = 64;
 pub const CTX_MELEE: u32 = 128;
 pub const CTX_THROWN: u32 = 256;
+pub const CTX_SNIPER: u32 = 1024;
 pub static CONTEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
 pub static INJECT: Mutex<Vec<(i32, f32)>> = Mutex::new(Vec::new());

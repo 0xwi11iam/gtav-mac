@@ -38,8 +38,6 @@ pub const CTX_SNIPER: u32 = 1024;
 pub static CONTEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
 pub static INJECT: Mutex<Vec<(i32, f32)>> = Mutex::new(Vec::new());
-/// Radio wheel stick (left/right, up/down, -1..1) while the radio button is dragged.
-/// The radio wheel reads its own axes from the frontend controls, not the mouse.
 pub static RADIO_WHEEL: Mutex<Option<(f32, f32)>> = Mutex::new(None);
 pub const FRONTEND_CONTROL: i32 = 2;
 pub const RADIO_WHEEL_UD: i32 = 332;

@@ -107,7 +107,6 @@ const VEH_SUB_ASCEND: i32 = 131;
 const VEH_SUB_DESCEND: i32 = 132;
 const VEH_PUSHBIKE_PEDAL: i32 = 136;
 const VEH_PUSHBIKE_SPRINT: i32 = 137;
-// read by the scope camera as buttons (the mouse wheel drives the INPUT_SNIPER_ZOOM axis)
 const SNIPER_ZOOM_IN: i32 = 42;
 const SNIPER_ZOOM_OUT: i32 = 43;
 const VEH_PUSHBIKE_FRONT_BRAKE: i32 = 138;

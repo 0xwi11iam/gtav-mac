@@ -53,12 +53,12 @@ bar() { # bar <pct> <label>
 }
 
 # ── re-exec when piped from curl ─────────────────────────────────────────────
-if [ "${BASH_SOURCE[0]}" != "$0" ]; then
+if [ "${BASH_SOURCE[0]:-}" != "$0" ]; then
   # running as `curl ... | bash` — prompts would eat our own script; re-exec from a file
   if [ -n "${INSTALL_URL:-}" ]; then
     tmp=$(mktemp /tmp/gta5-installer.XXXXXX)
     curl -fsSL "$INSTALL_URL" -o "$tmp"
-    exec bash "$tmp" "$@"
+    exec bash "$tmp" "$@" < /dev/tty 2>/dev/null || exec bash "$tmp" "$@"
   fi
   printf '%s\n' "Piping this script into bash eats the interactive prompts." \
     "Download it first:  curl -fsSL -o gta5-installer.sh <url>  then  bash gta5-installer.sh" >&2

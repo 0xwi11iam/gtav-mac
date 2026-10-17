@@ -228,6 +228,13 @@ while :; do
   read -r _ || exit 1
   printf '\r%*s\r' 70 ''
 done
+payload_gb=$(( $(du -sk "$DATA_DIR/data" "$DATA_DIR"/b/*/ 2>/dev/null | awk '{s+=$1} END {print s+0}') / 1024 ))
+need_gb=$(( payload_gb * 2 + 6 ))
+free_gb2=$(df -g "$HOME" | awk 'NR==2 {print $4}')
+if [ "${free_gb2:-0}" -lt "$need_gb" ]; then
+  fail "your data is ${payload_gb} GB — need ${need_gb} GB free for zip + import + build (have ${free_gb2} GB). Free some space and rerun."
+fi
+ok "payload ${payload_gb} GB · ${free_gb2} GB free · ${need_gb} GB needed"
 
 # ══════════════════════════════════════════════════════════ staging zip ══════
 step "Packing your data (store-mode zip, ~16 GB — minutes)"

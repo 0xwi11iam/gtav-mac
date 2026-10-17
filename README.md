@@ -1,71 +1,52 @@
-# Muguet
-A native Mach-O iOS/macOS port of GTA V, with multiplayer
+# gtav-mac
 
-## How does this work ?
-this whole port relies on the WebAssembly compilation of the game. in a browser, that `game.wasm` runs inside the JS engine, behind WebGPU, Web Audio, web workers...
-Muguet throws that layer away and runs the same `game.wasm` as a regular native app, with [wasmtime](https://wasmtime.dev) for the code and [wgpu](https://wgpu.rs) on Metal for the graphics
+Native **GTA V** app for Apple Silicon Macs — one script, app lands on your Desktop.
 
-On macOS, the game code is compiled to native arm64 the first time you launch it, then cached. On iOS, we can't properly do that (i dont rlly want you to deal with the hassle of enabling JIT), so the game code is compiled when you build the app and baked into it
+Built on [muguet](https://github.com/c22dev/muguet) by **c22dev** (Constantin Clerc), GPL-3.0.
+This repo is a macOS-only fork pinned to muguet commit `1a0300d` (verified working build).
 
-On top of that, Muguet adds a small UDP multiplayer (for other people who have the same port to play with you)
+## What I changed vs upstream muguet
 
-## Game files
-Because I care about me not getting sued, you will need your own copy as a `.zip` : the folder holding `data/` and `b/<build>/` (with `game.wasm` and `shaders/`)
+- **One-script install** — `gta5-installer.sh`: preflight checks, installs missing tools (Rust,
+  cmake via Homebrew), waits for you to drop your game files, progress bars, builds, imports,
+  drops `GTA V.app` on your Desktop and pre-compiles so first launch is instant
+- **Rebranded** — app is called **GTA V** (bundle name, window title), custom app icon
+  (drop your own `icon.png`, or it uses the built-in V)
+- **No Xcode needed** — builds with just Command Line Tools (`swiftc` for the launcher);
+  the icon is built with `sips` + `iconutil` instead of `actool`
+- **macOS only** — stripped the iOS side (`ios/`, `make-ios.sh`) and the upstream
+  `build.sh`/`build.command` installers; `make-app.sh` rewritten for this fork
+- Self-contained — the installer clones from **this** repo, not upstream
 
-It's basically the same source as the web port.
+## Prereqs
 
-Muguet itself will then asks for that zip
+- Apple Silicon Mac (M1–M4), macOS 14+
+- ~40 GB free disk
+- Command Line Tools: `xcode-select --install`
+- [Homebrew](https://brew.sh) (Rust + cmake get installed for you if missing)
 
-## Requirements
-- Apple Silicon Mac, macOS 14 or later
-- Rust toolchain
-- Xcode 26 or later
+## Your game files — you bring them
 
-For iOS, also :
-- `rustup` with `rustup toolchain install 1.98.1` and `rustup target add aarch64-apple-ios --toolchain 1.98.1`
-- `xcodegen` (`brew install xcodegen`)
-- an Apple developer account
-- a device on iOS 15 or later, ideally 8 GB of RAM
+**This repo does not host, distribute, or link any Rockstar / GTA game content.**
+Bring your own `data/` (~16 GB) and `b/` (with `game.wasm` + `shaders/`) from the web port.
+The script waits while you drop them into `~/gta-import`.
 
-## Building
-The easy way, paste this in Terminal :
+## Run
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/0xwi11iam/gtav-mac/main/gta5-installer.sh | bash
 ```
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/c22dev/muguet/main/build.sh)"
-```
-It downloads Muguet into `/tmp/muguet`, installs what's missing (Homebrew, Rust...), then asks whether you want the Mac or the iOS version and walks you through the rest. The `.app` / `.ipa` end up in `~/Downloads/muguetOutput`. Already have the repo ? Double-click `build.command`, or run `./build.sh`
 
-You need Xcode 26 or later from the App Store. To install on your iPhone / iPad, sign in to Xcode with your Apple ID (Settings > Accounts), a free one works
-
-By hand, macOS :
-```
-./make-app.sh
-```
-gives `build/Muguet.app`
-
-iOS :
-```
-TEAM=<your team id> ./make-ios.sh game.zip --install
-```
-`--ipa` makes `build/Muguet.ipa` instead. With a free account, add `FREE=1` (+ a `BUNDLE_ID` of your own)
-
-Please install this app with AltStore. This probably won't work well with Sideloadly (or even SideStore, as per [this issue])(https://github.com/SideStore/SideStore/issues/1616)
-
-The app also works with a paid developer account.
+Manual: `git clone` this repo, run `bash gta5-installer.sh`, or build directly with `./make-app.sh`.
 
 ## Multiplayer
-One player hosts from the launcher (or runs `muguet-server` on any machine), the others join with that address. UDP port 47520
 
-## Limitations
-- iOS needs the increased memory limit entitlement
-- Story missions are single player only
+Launcher → "Play with friends" → Host or Join. UDP port 47520 (forward it on the host's
+router for internet play). Everyone needs their own build + game files.
 
-## Credits
-- [divyanshugarg36](https://github.com/divyanshugarg36) for lots of iOS fixes and improvements
-- [c0rmac](https://github.com/c0rmac) for fixing a heap corruption and a gpu memory leak, faster rendering, astc textures, native opus audio, gamepad flight controls and graphics presets on mac
-- [Kagander](https://github.com/Kagander) for fixing the minimap
-- [inj-src](https://github.com/inj-src) for decoding bc textures on all cores
-- [Dbhardwaj99](https://github.com/Dbhardwaj99) for reporting real free disk space
-- [dre4moff](https://github.com/dre4moff) for releasing controller input when the app loses focus
-- [kjnefk](https://github.com/kjnefk) for importing your own saves
+## Cleanup after it works
 
-Contributions are welcome !
+```bash
+rm -rf ~/gta-import/game.zip ~/gta-import/data ~/gta-import/b   # ~32 GB back
+rm -rf ~/gta-build                                              # build cache
+```

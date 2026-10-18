@@ -10,8 +10,8 @@ This repo is a macOS-only fork pinned to muguet commit `1a0300d` (verified worki
 - **One-script install** — `gta5-installer.sh`: preflight checks, installs missing tools (Rust,
   cmake via Homebrew), waits for you to drop your game files, progress bars, builds, imports,
   drops `GTA V.app` on your Desktop and pre-compiles so first launch is instant
-- **Rebranded** — app is called **GTA V** (bundle name, window title), custom app icon
-  (drop your own `icon.png`, or it uses the built-in V)
+- **Rebranded** — app is called **GTA V** (bundle name, window title), bundled app icon
+  (drop your own `icon.png` into `~/gta-import` to override)
 - **No Xcode needed** — builds with just Command Line Tools (`swiftc` for the launcher);
   the icon is built with `sips` + `iconutil` instead of `actool`
 - **macOS only** — stripped the iOS side (`ios/`, `make-ios.sh`) and the upstream

@@ -58,7 +58,11 @@ if [ "${BASH_SOURCE[0]:-}" != "$0" ]; then
   if [ -n "${INSTALL_URL:-}" ]; then
     tmp=$(mktemp /tmp/gta5-installer.XXXXXX)
     curl -fsSL "$INSTALL_URL" -o "$tmp"
-    exec bash "$tmp" "$@" < /dev/tty 2>/dev/null || exec bash "$tmp" "$@"
+    if ( : < /dev/tty ) 2>/dev/null; then
+      exec bash "$tmp" "$@" < /dev/tty
+    else
+      exec bash "$tmp" "$@"
+    fi
   fi
   printf '%s\n' "Piping this script into bash eats the interactive prompts." \
     "Download it first:  curl -fsSL -o gta5-installer.sh <url>  then  bash gta5-installer.sh" >&2
@@ -75,8 +79,11 @@ os_major=$(sw_vers -productVersion | cut -d. -f1)
 ok "macOS $(sw_vers -productVersion) on $(uname -m)"
 
 free_gb=$(df -g "$HOME" | awk 'NR==2 {print $4}')
+if [ "${free_gb:-0}" -lt 20 ]; then
+  fail "need at least 20 GB free to attempt an install — you have ${free_gb} GB."
+fi
 if [ "${free_gb:-0}" -lt "$FREE_GB_NEEDED" ]; then
-  fail "need ≥${FREE_GB_NEEDED} GB free (data copy + zip + import + build) — you have ${free_gb} GB."
+  warn "only ${free_gb} GB free (recommended ${FREE_GB_NEEDED}) — the real check runs once your data is in place"
 fi
 ok "${free_gb} GB free"
 

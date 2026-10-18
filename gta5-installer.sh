@@ -87,10 +87,15 @@ if [ "${free_gb:-0}" -lt "$FREE_GB_NEEDED" ]; then
 fi
 ok "${free_gb} GB free"
 
-command -v git  >/dev/null || fail "git not found — install Xcode Command Line Tools: xcode-select --install"
-command -v zip  >/dev/null || fail "zip not found — install Xcode Command Line Tools: xcode-select --install"
-command -v swiftc >/dev/null || warn "swiftc not found" "install Command Line Tools: xcode-select --install, then rerun"
-have_swiftc=0; command -v swiftc >/dev/null && have_swiftc=1
+if ! xcode-select -p >/dev/null 2>&1; then
+  printf '  %s✘ %sCommand Line Tools missing.\n' "$RED" "$R"
+  printf '    Run: %sxcode-select --install%s then click Install in the popup, and rerun this script.\n' "$B" "$R"
+  exit 1
+fi
+ok "Command Line Tools: $(xcode-select -p)"
+for t in git zip unzip swiftc sips iconutil; do
+  command -v "$t" >/dev/null || fail "$t missing — run: xcode-select --install"
+done
 
 # ═══════════════════════════════════════════════════════════ tools (brew) ════
 step "Checking tools (Homebrew, Rust, cmake)"

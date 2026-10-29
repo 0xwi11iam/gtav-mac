@@ -18,7 +18,6 @@ done
 # ── config ────────────────────────────────────────────────────────────────────
 INSTALL_URL="https://raw.githubusercontent.com/0xwi11iam/gtav-mac/main/gta5-installer.sh"
 MUGUET_REPO="https://github.com/0xwi11iam/gtav-mac"
-MUGUET_PIN="1a0300d3cfc5f87ce2fa1ccb365c013e5238e322"   # verified working build
 BUILD_ROOT="$HOME/gta-build"       # clone + rust build lives here
 DATA_DIR="$HOME/gta-import"        # <- you drop data/ and b/ here
 APP_DEST="$HOME/Desktop/GTA V.app"
@@ -139,16 +138,17 @@ command -v cmake >/dev/null || fail "cmake install failed — try: brew install 
 ok "cmake $(cmake --version | head -1 | awk '{print $3}')"
 
 # ═══════════════════════════════════════════════════════════ clone muguet ════
-step "Fetching the muguet engine (pinned build)"
+step "Fetching the engine from your repo"
 mkdir -p "$BUILD_ROOT"
 if [ ! -d "$BUILD_ROOT/muguet/.git" ]; then
   git clone -q "$MUGUET_REPO" "$BUILD_ROOT/muguet" &
-  spinner $! "cloning github.com/c22dev/muguet"
+  spinner $! "cloning $MUGUET_REPO"
 else
-  note "existing clone at $BUILD_ROOT/muguet — reusing"
+  note "existing clone at $BUILD_ROOT/muguet — updating"
 fi
 cd "$BUILD_ROOT/muguet"
-git checkout -q "$MUGUET_PIN" 2>/dev/null || warn "could not pin to $MUGUET_PIN" "building current main instead"
+git fetch -q origin 2>/dev/null || true
+git reset -q --hard origin/main 2>/dev/null || warn "could not sync to origin/main" "building what is here"
 ok "engine source ready $(git rev-parse --short HEAD 2>/dev/null || echo '?')"
 
 # brand the launcher window title (best-effort, non-fatal)

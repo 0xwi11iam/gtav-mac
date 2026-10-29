@@ -6,13 +6,20 @@
 #   or:   curl -fsSL <script url> | bash
 set -euo pipefail
 
+FORCE=0
+for a in "$@"; do
+  case "$a" in
+    --force) FORCE=1 ;;
+  esac
+done
+
 # ── config ────────────────────────────────────────────────────────────────────
 INSTALL_URL="https://raw.githubusercontent.com/0xwi11iam/gtav-mac/main/gta5-installer.sh"
 MUGUET_REPO="https://github.com/0xwi11iam/gtav-mac"
 MUGUET_PIN="1a0300d3cfc5f87ce2fa1ccb365c013e5238e322"   # verified working build
 BUILD_ROOT="$HOME/gta-build"       # clone + rust build lives here
 DATA_DIR="$HOME/gta-import"        # <- you drop data/ and b/ here
-DESKTOP_APP="$HOME/Desktop/GTA V.app"
+APP_DEST="$HOME/GTA V.app"
 FREE_GB_NEEDED=40
 
 # ── colors ────────────────────────────────────────────────────────────────────
@@ -80,7 +87,11 @@ ok "macOS $(sw_vers -productVersion) on $(uname -m)"
 
 free_gb=$(df -g "$HOME" | awk 'NR==2 {print $4}')
 if [ "${free_gb:-0}" -lt 20 ]; then
-  fail "need at least 20 GB free to attempt an install — you have ${free_gb} GB."
+  if [ "$FORCE" = 1 ]; then
+    warn "--force: running with only ${free_gb} GB free — this will likely fail mid-install"
+  else
+    fail "need at least 20 GB free to attempt an install — you have ${free_gb} GB. (rerun with --force to override)"
+  fi
 fi
 if [ "${free_gb:-0}" -lt "$FREE_GB_NEEDED" ]; then
   warn "only ${free_gb} GB free (recommended ${FREE_GB_NEEDED}) — the real check runs once your data is in place"
@@ -249,11 +260,16 @@ while :; do
   read -r _ || exit 1
   printf '\r%*s\r' 70 ''
 done
-payload_gb=$(( $(du -sk "$DATA_DIR/data" "$DATA_DIR"/b/*/ 2>/dev/null | awk '{s+=$1} END {print s+0}') / 1024 ))
+payload_b=$(find "$DATA_DIR/data" "$DATA_DIR"/b -type f -print0 2>/dev/null | xargs -0 stat -f%z 2>/dev/null | awk '{s+=$1} END {print s+0}')
+payload_gb=$(( (payload_b + 1073741823) / 1073741824 ))
 need_gb=$(( payload_gb * 2 + 6 ))
 free_gb2=$(df -g "$HOME" | awk 'NR==2 {print $4}')
 if [ "${free_gb2:-0}" -lt "$need_gb" ]; then
-  fail "your data is ${payload_gb} GB — need ${need_gb} GB free for zip + import + build (have ${free_gb2} GB). Free some space and rerun."
+  if [ "$FORCE" = 1 ]; then
+    warn "--force: need ${need_gb} GB free, have ${free_gb2} GB — if the disk fills mid-import, rerun; it resumes clean"
+  else
+    fail "your data is ${payload_gb} GB — need ${need_gb} GB free for zip + import copy + build (have ${free_gb2} GB). rerun with --force to override"
+  fi
 fi
 ok "payload ${payload_gb} GB · ${free_gb2} GB free · ${need_gb} GB needed"
 
@@ -277,6 +293,10 @@ printf '\n'; ok "game.zip ready ($(du -sh "$ZIP" | cut -f1))"
 
 # ═══════════════════════════════════════════════════════ rust compile ════════
 step "Compiling the engine (Rust release build, ~2–5 min)"
+if ! curl -fsS -m 10 -o /dev/null "https://static.crates.io/crates/anyhow/1.0.104/anyhow-1.0.104.crate" 2>/dev/null; then
+  warn "static.crates.io unreachable — switching cargo to the USTC mirror"
+  grep -q 'source.ustc' .cargo/config.toml 2>/dev/null || printf '\n[source.crates-io]\nreplace-with = "ustc"\n[source.ustc]\nregistry = "sparse+https://mirrors.ustc.edu.cn/crates.io-index/"\n' >> .cargo/config.toml
+fi
 cargo fetch --locked >/dev/null 2>&1 || cargo fetch >/dev/null 2>&1 || true
 ( cargo build --release > build/build.log 2>&1 ) &
 bpid=$!
@@ -321,13 +341,13 @@ bar 100 "import complete"; printf '\n'
 [ -f "$GAME_HOME/game/data/manifest.json" ] && ok "game data installed" || fail "game data missing after import"
 
 # ═════════════════════════════════════════════════════════ finish + done ════
-step "Delivering to your Desktop"
-rm -rf "$DESKTOP_APP"
-ditto "build/GTA V.app" "$DESKTOP_APP"
-ok "$DESKTOP_APP ($(du -sh "$DESKTOP_APP" | cut -f1))"
-touch "$DESKTOP_APP"
+step "Installing the app"
+rm -rf "$APP_DEST"
+ditto "build/GTA V.app" "$APP_DEST"
+ok "$APP_DEST ($(du -sh "$APP_DEST" | cut -f1))"
+touch "$APP_DEST"
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
-  -f "$DESKTOP_APP" >/dev/null 2>&1 || true
+  -f "$APP_DEST" >/dev/null 2>&1 || true
 
 step "One-time game compile (optional prewarm)"
 if "$BUILD_ROOT/muguet/target/release/muguet" --compile > "$BUILD_ROOT/compile.log" 2>&1; then

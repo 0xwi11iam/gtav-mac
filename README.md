@@ -1,6 +1,6 @@
 # gtav-mac
 
-Native **GTA V** app for Apple Silicon Macs — one script, app lands on your Desktop.
+Native **GTA V** app for Apple Silicon Macs — one script, the app lands in your home folder.
 
 Built on [muguet](https://github.com/c22dev/muguet) by **c22dev** (Constantin Clerc), GPL-3.0.
 This repo is a macOS-only fork pinned to muguet commit `1a0300d` (verified working build).
@@ -9,7 +9,7 @@ This repo is a macOS-only fork pinned to muguet commit `1a0300d` (verified worki
 
 - **One-script install** — `gta5-installer.sh`: preflight checks, installs missing tools (Rust,
   cmake via Homebrew), waits for you to drop your game files, progress bars, builds, imports,
-  drops `GTA V.app` on your Desktop and pre-compiles so first launch is instant
+  drops `GTA V.app` in your home folder and pre-compiles so first launch is instant
 - **Rebranded** — app is called **GTA V** (bundle name, window title), bundled app icon
   (drop your own `icon.png` into `~/gta-import` to override)
 - **No Xcode needed** — builds with just Command Line Tools (`swiftc` for the launcher);

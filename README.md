@@ -1,6 +1,6 @@
 # gtav-mac
 
-Native **GTA V** app for Apple Silicon Macs — one script, the app lands in your home folder.
+Native **GTA V** app for Apple Silicon Macs — one script, GTA V.app lands on your Desktop.
 
 Built on [muguet](https://github.com/c22dev/muguet) by **c22dev** (Constantin Clerc), GPL-3.0.
 This repo is a macOS-only fork pinned to muguet commit `1a0300d` (verified working build).
@@ -38,6 +38,10 @@ curl -fsSL https://raw.githubusercontent.com/0xwi11iam/gtav-mac/main/gta5-instal
 ```
 
 Manual: `git clone` this repo, run `bash gta5-installer.sh`, or build directly with `./make-app.sh`.
+
+Flags: `--force` skips the disk-space checks · `--mirror` forces cargo to fetch crates
+from the rsproxy CDN (if crates.io is slow/blocked on your network, the script also
+detects and switches automatically).
 
 ## Multiplayer
 

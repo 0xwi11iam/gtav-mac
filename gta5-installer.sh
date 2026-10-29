@@ -7,9 +7,11 @@
 set -euo pipefail
 
 FORCE=0
+MIRROR=0
 for a in "$@"; do
   case "$a" in
     --force) FORCE=1 ;;
+    --mirror) MIRROR=1 ;;
   esac
 done
 
@@ -19,7 +21,7 @@ MUGUET_REPO="https://github.com/0xwi11iam/gtav-mac"
 MUGUET_PIN="1a0300d3cfc5f87ce2fa1ccb365c013e5238e322"   # verified working build
 BUILD_ROOT="$HOME/gta-build"       # clone + rust build lives here
 DATA_DIR="$HOME/gta-import"        # <- you drop data/ and b/ here
-APP_DEST="$HOME/GTA V.app"
+APP_DEST="$HOME/Desktop/GTA V.app"
 FREE_GB_NEEDED=40
 
 # ── colors ────────────────────────────────────────────────────────────────────
@@ -82,8 +84,8 @@ step "Checking this Mac"
 [ "$(uname -s)" = "Darwin" ] || fail "macOS only."
 [ "$(uname -m)" = "arm64" ] || fail "Apple Silicon (M1/M2/M3/M4) required — this is $(uname -m)."
 os_major=$(sw_vers -productVersion | cut -d. -f1)
-[ "${os_major:-0}" -ge 14 ] 2>/dev/null || fail "macOS 14 or later required (you have $(sw_vers -productVersion))."
-ok "macOS $(sw_vers -productVersion) on $(uname -m)"
+[ "${os_major:-0}" -ge 14 ] 2>/dev/null || fail "macOS 14 (Sonoma) or later required — you have $(sw_vers -productVersion). Sequoia 15 recommended."
+ok "macOS $(sw_vers -productVersion) on $(uname -m)$([ "${os_major:-0}" -ge 15 ] && echo ' — Sequoia or newer ✓')"
 
 free_gb=$(df -g "$HOME" | awk 'NR==2 {print $4}')
 if [ "${free_gb:-0}" -lt 20 ]; then
@@ -99,8 +101,9 @@ fi
 ok "${free_gb} GB free"
 
 if ! xcode-select -p >/dev/null 2>&1; then
-  printf '  %s✘ %sCommand Line Tools missing.\n' "$RED" "$R"
-  printf '    Run: %sxcode-select --install%s then click Install in the popup, and rerun this script.\n' "$B" "$R"
+  warn "Command Line Tools missing — launching Apple's installer now"
+  xcode-select --install 2>/dev/null || true
+  printf '    %sClick Install in the window that opened; when it finishes, run this script again.%s\n' "$B" "$R"
   exit 1
 fi
 ok "Command Line Tools: $(xcode-select -p)"
@@ -111,7 +114,8 @@ done
 # ═══════════════════════════════════════════════════════════ tools (brew) ════
 step "Checking tools (Homebrew, Rust, cmake)"
 if ! command -v brew >/dev/null; then
-  warn "Homebrew missing — installing (this needs your password once)"
+  warn "Homebrew missing — installing now"
+  printf '    %sIt will ask for your Mac password and to press Return — that is normal, type away.%s\n' "$DIM" "$R"
   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
   eval "$(/opt/homebrew/bin/brew shellenv 2>/dev/null || true)"
 fi
@@ -285,7 +289,7 @@ while kill -0 "$zpid" 2>/dev/null; do
   sleep 2
   zbytes=$(stat -f%z "$ZIP" 2>/dev/null || echo 0)
   pct=$(( zbytes * 100 / (src_bytes == 0 ? 1 : src_bytes) ))
-  bar "${pct:-0}" "packing ($(echo "scale=1; ${zbytes:-0}/1073741824" | bc 2>/dev/null || echo '?')/$(echo "scale=1; $src_bytes/1073741824" | bc) GiB)"
+  bar "${pct:-0}" "packing $(awk -v a="${zbytes:-0}" -v b="$src_bytes" 'BEGIN{printf "%.1f/%.1f GiB", a/1073741824, b/1073741824}')"
 done
 wait "$zpid" || fail "zip failed"
 bar 100 "packing done"
@@ -293,9 +297,12 @@ printf '\n'; ok "game.zip ready ($(du -sh "$ZIP" | cut -f1))"
 
 # ═══════════════════════════════════════════════════════ rust compile ════════
 step "Compiling the engine (Rust release build, ~2–5 min)"
-if ! curl -fsS -m 10 -o /dev/null "https://static.crates.io/crates/anyhow/1.0.104/anyhow-1.0.104.crate" 2>/dev/null; then
-  warn "static.crates.io unreachable — switching cargo to the USTC mirror"
-  grep -q 'source.ustc' .cargo/config.toml 2>/dev/null || printf '\n[source.crates-io]\nreplace-with = "ustc"\n[source.ustc]\nregistry = "sparse+https://mirrors.ustc.edu.cn/crates.io-index/"\n' >> .cargo/config.toml
+if [ "$MIRROR" = 1 ]; then
+  warn "--mirror: forcing cargo to the rsproxy CDN"
+  grep -q 'source.rsproxy' .cargo/config.toml 2>/dev/null || printf '\n[source.crates-io]\nreplace-with = "rsproxy"\n[source.rsproxy]\nregistry = "sparse+https://rsproxy.cn/index/"\n' >> .cargo/config.toml
+elif ! curl -fsS -m 10 -o /dev/null "https://static.crates.io/crates/anyhow/1.0.104/anyhow-1.0.104.crate" 2>/dev/null; then
+  warn "static.crates.io unreachable — switching cargo to the rsproxy CDN (--mirror forces this)"
+  grep -q 'source.rsproxy' .cargo/config.toml 2>/dev/null || printf '\n[source.crates-io]\nreplace-with = "rsproxy"\n[source.rsproxy]\nregistry = "sparse+https://rsproxy.cn/index/"\n' >> .cargo/config.toml
 fi
 cargo fetch --locked >/dev/null 2>&1 || cargo fetch >/dev/null 2>&1 || true
 ( cargo build --release > build/build.log 2>&1 ) &
